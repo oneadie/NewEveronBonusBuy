@@ -1,0 +1,38 @@
+<!-- winners_widget.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Winners Widget</title>
+    <link rel="stylesheet" href="winners_styles.css">
+</head>
+<body>
+    <div id="control-panel" style="display: none;">
+        <input type="text" id="obs-url" readonly>
+        <button onclick="generateOBSLink()">Generate OBS URL</button>
+    </div>
+    <div id="widget-header" class="widget-header">
+        EVERON BonusBuy #<span id="widget-buy-number">1</span>
+    </div>
+    <table id="winners-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Bonus Info</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <div id="widget-totals" class="widget-totals">
+        <p>Потрачено: <span id="widget-spent">0</span></p>
+        <p>Бонусов: <span id="widget-count">0</span></p>
+        <p>Окуп: <span id="widget-percent">0%</span></p>
+    </div>
+    <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" onerror="console.error('Failed to load firebase-app-compat.js')"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js" onerror="console.error('Failed to load firebase-database-compat.js')"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" onerror="console.error('Failed to load firebase-auth-compat.js')"></script>
+    <script src="winners_script.js"></script>
+</body>
+</html>

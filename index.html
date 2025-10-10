@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Everon Bonus Selector</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+</head>
+<body>
+    <header>
+        <img src="icon.jpg" alt="Streamer Icon" id="streamer-icon">
+        <h1>EVERON BONUS BUY №<span id="buy-number">1</span></h1>
+        <a href="widjet.html"> Виджет стикеров </a>
+        <a href="winners_widget.html"> Виджет победителей </a>
+        <div id="archive-selector" style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <select id="archive-dates"></select>
+            <button id="view-archive">Просмотреть</button>
+            <button id="back-to-current" style="display: none;">Вернуться назад</button>
+        </div>
+    </header>
+    <main>
+        <section id="input-section">
+            <h2>Добавить участников</h2>
+            <textarea id="participant-input" placeholder="Вставьте список участников из Telegram"></textarea>
+            <button id="parse-participants">Обработать список</button>
+        </section>
+        <section id="controls" style="display: none;">
+            <label for="winner-limit">Лимит победителей: <input type="number" id="winner-limit" min="1" value="10"></label>
+            <button id="transfer-all">Перенести сразу всех в таблицу</button>
+            <button id="spin-one">По одному</button>
+            <button id="start-spin">Выбрать сразу всех</button>
+            <button id="reset-controls">Сбросить всё</button>
+        </section>
+        <section id="participants-section" style="display: none;">
+            <h2>Участники</h2>
+            <table id="participants-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Имя</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+        <section id="winners-section" style="display: none;">
+            <h2>Победители</h2>
+            <div class="mode-selector">
+                <label for="bonus-mode-select">Режим расчета бонуса: </label>
+                <select id="bonus-mode-select">
+                    <option value="shuffle">Shuffle</option>
+                    <option value="other">10% от прибыли после 200x</option>
+                </select>
+            </div>
+            <div class="button-group">
+                <button id="add-everon">Добавить everon</button>
+                <button id="add-more">Добавить новых игроков</button>
+                <button id="reset-winners">Сбросить всё</button>
+                <button id="start-buy">Старт(Нажми когда внес всех)</button>
+                <button id="stop-buy">Стоп(Когда вписал везде сколько дала)</button>
+            </div>
+            <table id="winners-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>#</th>
+                        <th>Имя</th>
+                        <th>Цена бонуса</th>
+                        <th>Сколько дала</th>
+                        <th>x</th>
+                        <th>Бонус $</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div id="totals-counter">
+                <p>Всего потрачено на бонусы: <span id="total-spent">0</span></p>
+                <p>Всего получено: <span id="total-received">0</span></p>
+                <p>Окуп: <span id="payback-percent">0%</span></p>
+            </div>
+        </section>
+    </main>
+    <div id="multi-modal" class="modal">
+        <div class="modal-content">
+            <span id="close-modal" class="close">&times;</span>
+            <div id="reels-container" class="reels-container"></div>
+        </div>
+    </div>
+    <div id="add-more-modal" class="modal small-modal">
+        <div class="modal-content">
+            <span id="close-add-modal" class="close">&times;</span>
+            <h2>Добавить больше победителей</h2>
+            <label for="additional-limit">Сколько еще: <input type="number" id="additional-limit" min="1" value="5"></label>
+            <button id="select-more">Выбрать</button>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
