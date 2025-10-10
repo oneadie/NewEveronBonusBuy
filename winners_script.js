@@ -219,7 +219,7 @@ function generateOBSLink(currency) {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         baseUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
     } else {
-        baseUrl = 'https://oneadie.github.io/EveronBonusBuy/winners_widget.html';
+        baseUrl = 'https://oneadie.github.io/NewEveronBonusBuy/winners_widget.html';
     }
     const url = `${baseUrl}?obs=1&currency=${currency}&_=${Date.now()}`;
     const input = document.getElementById('obs-url');
@@ -280,4 +280,5 @@ window.addEventListener('load', () => {
             console.log('Initial rowHeight:', rowHeight);
         }
     }, 1000);
+
 });
