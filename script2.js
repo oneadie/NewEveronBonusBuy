@@ -346,7 +346,7 @@ function testSticker() {
 }
 
 function generateOBSLink() {
-    const url = `https://oneadie.github.io/EveronBonusBuy/widjet.html?obs=1&channel=${encodeURIComponent(channel)}&minSize=${minStickerSize}&maxSize=${maxStickerSize}&minSpeed=${minSpeed}&maxSpeed=${maxSpeed}&minDisplayTime=${minDisplayTime}&maxDisplayTime=${maxDisplayTime}&_=${Date.now()}`;
+    const url = `https://oneadie.github.io/NewEveronBonusBuy/widjet.html?obs=1&channel=${encodeURIComponent(channel)}&minSize=${minStickerSize}&maxSize=${maxStickerSize}&minSpeed=${minSpeed}&maxSpeed=${maxSpeed}&minDisplayTime=${minDisplayTime}&maxDisplayTime=${maxDisplayTime}&_=${Date.now()}`;
     const input = document.getElementById('obs-url');
     input.value = url;
     input.select();
@@ -430,4 +430,5 @@ function saveSettings() {
         }, 100);
     }
     closeSettingsModal();
+
 }
