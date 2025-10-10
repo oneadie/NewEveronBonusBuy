@@ -430,5 +430,4 @@ function saveSettings() {
         }, 100);
     }
     closeSettingsModal();
-
 }
