@@ -65,7 +65,7 @@ body {
     border-bottom: 1px solid #6242ff;
     padding: 0 8px;
     color: #ffffff; /* Set font color to white */
-    font-size: 1.2em; /* Increase font size (adjust as needed) */
+    font-size: 1.4em; /* Increase font size (adjust as needed) */
 }
 
 .left {
@@ -246,3 +246,4 @@ body {
         padding: 20px;
     }
 }
+
