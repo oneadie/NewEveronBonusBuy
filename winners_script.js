@@ -24,7 +24,7 @@ const firebaseConfig = {
 
 // Функция для обрезки имени
 function truncateName(name) {
-    return name.length > 17 ? name.substring(0, 17) + '...' : name;
+    return name.length > 13 ? name.substring(0, 13) + '...' : name;
 }
 
 // Функция для форматирования строки информации
@@ -282,4 +282,5 @@ window.addEventListener('load', () => {
     }, 1000);
 
 });
+
 
