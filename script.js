@@ -789,7 +789,7 @@ function calculateBonus(row, index) {
         else if (x >= 600) bonus = '25$';
         else if (x >= 300) bonus = '15$';
         else if (x >= 200) bonus = '10$';
-        else if (x >= 100) bonus = 'утешалка 3$';
+        else if (x >= 100) bonus = '3$';
         else bonus = 'gg';
     } else {
         if (x < 200) {
@@ -1040,4 +1040,5 @@ function startBuy() {
 
 function stopBuy() {
     syncStatus('stopped');
+
 }
