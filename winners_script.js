@@ -5,7 +5,7 @@ const widgetCount = document.getElementById('widget-count');
 const widgetPercent = document.getElementById('widget-percent');
 let lastWinnersData = [];
 let status = 'idle';
-let rowHeight = 40; // Примерная высота строки, измерить по CSS
+let rowHeight = 40;
 let infiniteScrollInterval;
 let scrollPosition = 0;
 let currencySymbol = '$';
@@ -24,7 +24,7 @@ const firebaseConfig = {
 
 // Функция для обрезки имени
 function truncateName(name) {
-    return name.length > 13 ? name.substring(0, 13) + '...' : name;
+    return name.length > 17 ? name.substring(0, 17) + '...' : name;
 }
 
 // Функция для форматирования строки информации
@@ -34,6 +34,36 @@ function formatWinnerInfo(winner) {
     const arrow = payout ? ' → ' : '';
     const bonus = winner.bonus && winner.bonus !== 'gg' ? ` (${winner.bonus})` : '';
     return `${price}${arrow}${payout}${bonus}`;
+}
+
+// Функция для расчета лучших бонусов
+function calculateBestBonuses(winnersData) {
+    let bestMultiplier = { index: -1, name: '', multiplier: 0 };
+    let bestAmount = { index: -1, name: '', amount: 0 };
+    
+    winnersData.forEach((winner, index) => {
+        // Парсим multi, убирая 'x'
+        const multiplier = winner.multi ? parseFloat(winner.multi.replace('x', '')) || 0 : 0;
+        const payout = parseFloat(winner.payout) || 0;
+        
+        if (multiplier > bestMultiplier.multiplier) {
+            bestMultiplier = {
+                index: index + 1,
+                name: winner.name,
+                multiplier: multiplier
+            };
+        }
+        
+        if (payout > bestAmount.amount) {
+            bestAmount = {
+                index: index + 1,
+                name: winner.name,
+                amount: payout
+            };
+        }
+    });
+    
+    return { bestMultiplier, bestAmount };
 }
 
 // Функция для обновления таблицы
@@ -53,14 +83,13 @@ function updateWinnersTable(winnersData) {
     }
     winnersList.innerHTML = html;
     if (status === 'stopped') {
-        winnersList.innerHTML = html + html; // Дублируем для бесконечной прокрутки
+        winnersList.innerHTML = html + html;
     }
     updateTotals(winnersData);
     adjustScroll(winnersData);
-    // Принудительный рендеринг для OBS
     requestAnimationFrame(() => {
         winnersList.style.display = 'none';
-        winnersList.offsetHeight; // Trigger reflow
+        winnersList.offsetHeight;
         winnersList.style.display = '';
         console.log('Table re-rendered for OBS');
     });
@@ -78,6 +107,33 @@ function updateTotals(winnersData) {
     widgetSpent.textContent = spent.toFixed(2) + currencySymbol;
     widgetCount.textContent = winnersData.length;
     widgetPercent.textContent = `${percent}%`;
+    
+    const { bestMultiplier, bestAmount } = calculateBestBonuses(winnersData);
+    
+    const bestMultiplierEl = document.getElementById('best-multiplier');
+    const bestAmountEl = document.getElementById('best-amount');
+    
+    if (bestMultiplierEl && bestAmountEl) {
+        if (bestMultiplier.multiplier > 0) {
+            const multiplierText = bestMultiplier.multiplier >= 1000 ? 
+                (bestMultiplier.multiplier / 1000).toFixed(1) + 'kx' : 
+                Math.floor(bestMultiplier.multiplier) + 'x';
+            const name = truncateName(bestMultiplier.name);
+            bestMultiplierEl.textContent = `🔥 ${bestMultiplier.index}) ${name} ${multiplierText}`;
+        } else {
+            bestMultiplierEl.textContent = '🔥 -';
+        }
+        
+        if (bestAmount.amount > 0) {
+            const amountText = bestAmount.amount >= 1000 ? 
+                (bestAmount.amount / 1000).toFixed(1) + 'k' + currencySymbol : 
+                bestAmount.amount.toFixed(0) + currencySymbol;
+            const name = truncateName(bestAmount.name);
+            bestAmountEl.textContent = `💰 ${bestAmount.index}) ${name} ${amountText}`;
+        } else {
+            bestAmountEl.textContent = `💰 -`;
+        }
+    }
 }
 
 function adjustScroll(winnersData) {
@@ -109,7 +165,7 @@ function startInfiniteScroll(body, length) {
     }
 
     const contentHeight = length * rowHeight;
-    const speed = 0.3; // немного медленнее и плавнее
+    const speed = 0.3;
     winnersList.innerHTML = winnersList.innerHTML + winnersList.innerHTML;
 
     body.style.transition = 'transform 0.05s linear';
@@ -117,12 +173,9 @@ function startInfiniteScroll(body, length) {
     function scrollLoop() {
         scrollPosition += speed;
         if (scrollPosition >= contentHeight) {
-            // Когда дошли до конца первой половины — просто сбрасываем позицию
-            // без визуального рывка, через отключение transition на один кадр
             body.style.transition = 'none';
             scrollPosition = 0;
             body.style.transform = `translateY(0px)`;
-            // принудительный reflow, чтобы transition снова включился
             body.offsetHeight;
             body.style.transition = 'transform 0.05s linear';
         } else {
@@ -134,7 +187,6 @@ function startInfiniteScroll(body, length) {
     scrollLoop();
 }
 
-
 function stopInfiniteScroll() {
     if (infiniteScrollInterval) {
         cancelAnimationFrame(infiniteScrollInterval);
@@ -142,7 +194,6 @@ function stopInfiniteScroll() {
     }
 }
 
-// Функция для инициализации Firebase
 function initializeFirebase() {
     if (typeof firebase === 'undefined') {
         console.error('Firebase SDK not loaded yet.');
@@ -153,7 +204,6 @@ function initializeFirebase() {
         const db = firebase.database();
         const auth = firebase.auth();
 
-        // Анонимный логин
         auth.signInAnonymously()
             .then(() => console.log('Firebase anonymous auth successful in widget'))
             .catch(error => {
@@ -163,7 +213,6 @@ function initializeFirebase() {
                 }
             });
 
-        // Реал-тайм подписка на winners
         db.ref('currentWinners').on('value', (snapshot) => {
             const winnersData = snapshot.val() || [];
             console.log(`Realtime: Loaded ${winnersData.length} winners from Firebase:`, JSON.stringify(winnersData));
@@ -173,14 +222,12 @@ function initializeFirebase() {
             winnersList.innerHTML = '<div class="row" style="text-align: center; color: #666;"><div class="left"></div><div class="right">Ошибка загрузки данных</div></div>';
         });
 
-        // Подписка на status
         db.ref('status').on('value', (snapshot) => {
             const newStatus = snapshot.val() || 'idle';
             status = newStatus;
             adjustScroll(lastWinnersData);
         });
 
-        // Подписка на buy number
         db.ref('archives').on('value', (snapshot) => {
             const archives = snapshot.val() || {};
             const count = Object.keys(archives).length;
@@ -194,7 +241,6 @@ function initializeFirebase() {
     }
 }
 
-// Ожидание полной загрузки документа и Firebase SDK
 function waitForFirebase() {
     if (document.readyState === 'complete' && typeof firebase !== 'undefined') {
         initializeFirebase();
@@ -210,7 +256,7 @@ function waitForFirebase() {
             if (!initializeFirebase()) {
                 console.error('Firebase SDK failed to load after timeout.');
             }
-        }, 10000); // Таймаут 10 секунд
+        }, 10000);
     }
 }
 
@@ -219,7 +265,7 @@ function generateOBSLink(currency) {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         baseUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
     } else {
-        baseUrl = 'https://oneadie.github.io/NewEveronBonusBuy/winners_widget.html';
+        baseUrl = 'https://oneadie.github.io/EveronBonusBuy/winners_widget.html';
     }
     const url = `${baseUrl}?obs=1&currency=${currency}&_=${Date.now()}`;
     const input = document.getElementById('obs-url');
@@ -272,7 +318,6 @@ window.addEventListener('load', () => {
     }
     console.log('Winners widget loaded');
     waitForFirebase();
-    // Измерить rowHeight
     setTimeout(() => {
         const sampleRow = winnersList.querySelector('.row');
         if (sampleRow) {
@@ -280,7 +325,4 @@ window.addEventListener('load', () => {
             console.log('Initial rowHeight:', rowHeight);
         }
     }, 1000);
-
 });
-
-
