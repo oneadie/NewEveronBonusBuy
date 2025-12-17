@@ -10,6 +10,7 @@
 <body class="overflow-hidden bg-transparent m-0 p-0 w-[1920px] h-[1080px] min-w-[1920px] min-h-[1080px]">
     
     <div id="sticker-container" class="w-[1920px] h-[1080px] absolute top-0 left-0 overflow-hidden z-[1]"></div>
+    
     <div id="control-panel" class="hidden fixed top-4 left-4 bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-lg shadow-xl z-[10000] flex flex-col gap-3 text-white font-sans">
         <a href="index.html">Вернуться назад</a>
         <button onclick="generateOBSLink()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105">Generate OBS URL</button>
@@ -19,23 +20,31 @@
         <input type="text" id="obs-url" readonly placeholder="Click button to generate URL" class="p-2 w-80 bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
         <div id="debug-log" class="text-white max-h-80 overflow-y-auto text-sm bg-black bg-opacity-50 p-2 rounded-md"></div>
     </div>
+
     <div id="settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-[20000]">
         <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-lg shadow-2xl w-96 transform transition-all duration-300 scale-0">
             <h2 class="text-xl font-bold text-white mb-4">Settings</h2>
             <label for="streamer-channel" class="text-white mb-2 block">Streamer Channel</label>
             <input type="text" id="streamer-channel" placeholder="Enter streamer name" class="p-2 w-full bg-gray-700 text-white border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4">
+            
             <label for="min-size" class="text-white mb-2 block">Min Sticker Size (px): <span id="min-size-value">20</span></label>
             <input type="range" id="min-size" min="10" max="90" value="20" class="w-full mb-4">
+            
             <label for="max-size" class="text-white mb-2 block">Max Sticker Size (px): <span id="max-size-value">60</span></label>
             <input type="range" id="max-size" min="20" max="200" value="60" class="w-full mb-4">
+            
             <label for="min-speed" class="text-white mb-2 block">Min Speed (ms): <span id="min-speed-value">1500</span></label>
             <input type="range" id="min-speed" min="500" max="3000" value="1500" class="w-full mb-4">
+            
             <label for="max-speed" class="text-white mb-2 block">Max Speed (ms): <span id="max-speed-value">4000</span></label>
             <input type="range" id="max-speed" min="1000" max="5000" value="4000" class="w-full mb-4">
+            
             <label for="min-display-time" class="text-white mb-2 block">Min Display Time (s): <span id="min-display-time-value">2</span></label>
             <input type="range" id="min-display-time" min="1" max="10" value="2" step="0.1" class="w-full mb-4">
+            
             <label for="max-display-time" class="text-white mb-2 block">Max Display Time (s): <span id="max-display-time-value">5</span></label>
             <input type="range" id="max-display-time" min="2" max="20" value="5" step="0.1" class="w-full mb-4">
+            
             <div class="flex gap-2">
                 <button onclick="saveSettings()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-all duration-300">Save</button>
                 <button onclick="closeSettingsModal()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md transition-all duration-300">Cancel</button>
