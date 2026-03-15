@@ -118,7 +118,7 @@ selectMoreButton.addEventListener('click', () => {
 });
 closeModal.addEventListener('click', () => {
     multiModal.style.display = 'none';
-    document.body.style.overflow = ''; // Restore body scroll
+    document.body.style.overflow = ''; 
     if (isSingleMode) {
         finishSingleMode && finishSingleMode();
     } else {
@@ -136,22 +136,33 @@ function parseTelegramInput() {
 
     const lines = input.split('\n').map(line => line.trim()).filter(line => line);
     const parsedParticipants = [];
-    const skippedLines = [];
     let currentEntry = [];
 
-    lines.forEach((line, index) => {
-        if (line.match(/^[^,]+,\s*\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]/)) {
+    lines.forEach((line) => {
+        // Проверка на НОВЫЙ формат: [15.03.2026 11:54] Имя: Сообщение
+        const newFormatMatch = line.match(/^\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]\s+[^:]+:\s*(.*)/);
+        if (newFormatMatch) {
             if (currentEntry.length > 0) {
                 const name = currentEntry.join(' ').trim();
-                if (name) {
-                    parsedParticipants.push({ name });
-                } else {
-                    skippedLines.push({ line: name, reason: 'Empty after joining', index: index - 1 });
-                }
+                if (name) parsedParticipants.push({ name });
                 currentEntry = [];
             }
-            skippedLines.push({ line, reason: 'Telegram username with timestamp', index });
+            const textAfterColon = newFormatMatch[1].trim();
+            if (textAfterColon) {
+                currentEntry.push(textAfterColon);
+            }
             return;
+        }
+
+        // Проверка на СТАРЫЙ формат: Имя, [28.08.2025 13:29]
+        const oldFormatMatch = line.match(/^[^,]+,\s*\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]/);
+        if (oldFormatMatch) {
+            if (currentEntry.length > 0) {
+                const name = currentEntry.join(' ').trim();
+                if (name) parsedParticipants.push({ name });
+                currentEntry = [];
+            }
+            return; // Пропускаем строку с датой
         }
 
         currentEntry.push(line);
@@ -159,15 +170,8 @@ function parseTelegramInput() {
 
     if (currentEntry.length > 0) {
         const name = currentEntry.join(' ').trim();
-        if (name) {
-            parsedParticipants.push({ name });
-        } else {
-            skippedLines.push({ line: name, reason: 'Empty after joining', index: lines.length - 1 });
-        }
+        if (name) parsedParticipants.push({ name });
     }
-
-    console.log('Parsed participants:', parsedParticipants);
-    console.log('Skipped lines:', skippedLines);
 
     participants = [];
     participantsTableBody.innerHTML = '';
@@ -244,42 +248,33 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
 
         nameCell.addEventListener('input', () => {
             const name = nameCell.textContent.trim();
-            const originalName = nameCell.dataset.originalName;
-            const index = winners.findIndex(w => w.name === originalName);
-            if (index !== -1) {
-                console.log(`Updating winner name: ${originalName} -> ${name}`);
-                winners[index].name = name;
+            const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
+            if (rowIndex !== -1 && winners[rowIndex]) {
+                winners[rowIndex].name = name;
                 nameCell.dataset.originalName = name; 
                 syncWinnersToFirebase();
                 saveAppState();
-            } else {
-                console.error(`Winner not found in winners array for name: ${originalName}`);
             }
         });
 
         priceCell.addEventListener('input', () => {
             const price = priceCell.textContent.trim();
-            const originalName = nameCell.dataset.originalName;
-            const index = winners.findIndex(w => w.name === originalName);
-            if (index !== -1) {
-                console.log(`Updating winner price: ${originalName} -> ${price}`);
-                winners[index].price = price;
-                calculateBonus(row, index);
+            const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
+            if (rowIndex !== -1 && winners[rowIndex]) {
+                winners[rowIndex].price = price;
+                calculateBonus(row, rowIndex);
                 updateTotals();
                 syncWinnersToFirebase();
                 saveAppState();
-            } else {
-                console.error(`Winner not found in winners array for name: ${originalName}`);
             }
         });
 
         payoutCell.addEventListener('input', () => {
             const payout = payoutCell.textContent.trim();
-            const originalName = nameCell.dataset.originalName;
-            const index = winners.findIndex(w => w.name === originalName);
-            if (index !== -1) {
-                winners[index].payout = payout;
-                calculateBonus(row, index);
+            const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
+            if (rowIndex !== -1 && winners[rowIndex]) {
+                winners[rowIndex].payout = payout;
+                calculateBonus(row, rowIndex);
                 updateTotals();
                 syncWinnersToFirebase();
                 saveAppState();
@@ -287,20 +282,11 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
         });
 
         row.querySelector('.remove-btn').addEventListener('click', () => {
-            deleteWinner(row, nameCell.dataset.originalName);
-            updateTotals();
+            deleteWinner(row);
         });
     }
 
-    const existingIndex = winners.findIndex(w => w.name === person.name);
-    if (existingIndex === -1) {
-        winners.push({ name: person.name, price, payout });
-        console.log(`Added new winner:`, { name: person.name, price, payout });
-    } else {
-        winners[existingIndex].price = price;
-        winners[existingIndex].payout = payout;
-        console.log(`Updated existing winner:`, { name: person.name, price, payout });
-    }
+    winners.push({ name: person.name, price, payout });
 
     calculateBonus(row, winners.length - 1);
     updateTotals();
@@ -308,9 +294,12 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
     if (!isLoading) syncWinnersToFirebase();
 }
 
-function deleteWinner(mainRow, name) {
+function deleteWinner(mainRow) {
+    const rowIndex = Array.from(winnersTableBody.rows).indexOf(mainRow);
+    if (rowIndex !== -1) {
+        winners.splice(rowIndex, 1);
+    }
     if (mainRow) mainRow.remove();
-    winners = winners.filter(w => w.name !== name);
     winnerId = winners.length + 1;
     Array.from(winnersTableBody.rows).forEach((r, i) => r.cells[1].textContent = i + 1);
     updateTotals();
@@ -375,15 +364,6 @@ function initiateMultiSelection(limit) {
         const winnerIndex = Math.floor(Math.random() * availableParticipants.length);
         selectedWinners.push(availableParticipants.splice(winnerIndex, 1)[0]);
     }
-
-    // Логирование перед синхронизацией
-    console.log('Selected winners for multi-selection:', selectedWinners);
-    console.log('Updating winners array before Firebase sync:', winners);
-
-    // Добавление в winners и синхронизация
-    winners = [...winners, ...selectedWinners.map(winner => ({ name: winner.name, price: '', payout: '' }))];
-    console.log('Winners array after adding selected winners:', winners);
-    syncWinnersToFirebase();
 
     reelsContainer.innerHTML = '';
     if (selectedWinners.length === 0) {
@@ -479,7 +459,6 @@ function initiateMultiSelection(limit) {
         participantId = participantsTableBody.rows.length + 1;
         Array.from(participantsTableBody.rows).forEach((r, i) => r.cells[0].textContent = i + 1);
         showWinnersSection();
-        console.log('Final winners after multi-selection:', winners);
         saveAppState();
     }, animationDuration * 1000 + 1000);
 }
@@ -535,7 +514,6 @@ function initiateSingleMode() {
     buttonsContainer.appendChild(stopBtn);
     modalContent.appendChild(buttonsContainer);
 
-    // Load if any previous in single mode, but since we don't save selected, start empty
     buttonsContainer.style.display = 'flex';
     if (availableParticipants.length === 0) {
         furtherBtn.style.display = 'none';
@@ -620,17 +598,14 @@ function initiateSingleMode() {
                 closestItem.classList.add('winner');
                 document.getElementById('winner-name-0').textContent = winner.name;
 
-                // Add to main winners immediately
                 addWinnerRow({ name: winner.name, price: '', payout: '' });
 
-                // Remove from participants
                 Array.from(participantsTableBody.rows).forEach(row => {
                     if (row.cells[1].textContent.trim() === winner.name) row.remove();
                 });
                 participantId = participantsTableBody.rows.length + 1;
                 Array.from(participantsTableBody.rows).forEach((r, i) => r.cells[0].textContent = i + 1);
 
-                // Add to temp table
                 const row = tempTbody.insertRow();
                 row.innerHTML = `
                     <td><button class="remove-btn">✕</button></td>
@@ -654,47 +629,47 @@ function initiateSingleMode() {
                 nameCell.addEventListener('input', () => {
                     const name = nameCell.textContent.trim();
                     const originalName = nameCell.dataset.originalName;
-                    const index = winners.findIndex(w => w.name === originalName);
-                    if (index !== -1) {
-                        winners[index].name = name;
-                        nameCell.dataset.originalName = name;
-                        // Update main table name
-                        Array.from(winnersTableBody.rows).forEach(r => {
-                            if (r.cells[2].dataset.originalName === originalName) {
-                                r.cells[2].textContent = name;
-                                r.cells[2].dataset.originalName = name;
+                    
+                    Array.from(winnersTableBody.rows).forEach(r => {
+                        if (r.cells[2].dataset.originalName === originalName) {
+                            r.cells[2].textContent = name;
+                            r.cells[2].dataset.originalName = name;
+                            
+                            const rowIndex = Array.from(winnersTableBody.rows).indexOf(r);
+                            if (rowIndex !== -1 && winners[rowIndex]) {
+                                winners[rowIndex].name = name;
                             }
-                        });
-                        syncWinnersToFirebase();
-                        saveAppState();
-                    }
+                        }
+                    });
+                    nameCell.dataset.originalName = name;
+                    syncWinnersToFirebase();
+                    saveAppState();
                 });
 
                 priceCell.addEventListener('input', () => {
                     const price = priceCell.textContent.trim();
                     const originalName = nameCell.dataset.originalName;
-                    const index = winners.findIndex(w => w.name === originalName);
-                    if (index !== -1) {
-                        winners[index].price = price;
-                        // Update main table price
-                        Array.from(winnersTableBody.rows).forEach(r => {
-                            if (r.cells[2].dataset.originalName === originalName) {
-                                r.cells[3].textContent = price;
-                                calculateBonus(r, index);
+                    
+                    Array.from(winnersTableBody.rows).forEach(r => {
+                        if (r.cells[2].dataset.originalName === originalName) {
+                            r.cells[3].textContent = price;
+                            const rowIndex = Array.from(winnersTableBody.rows).indexOf(r);
+                            if (rowIndex !== -1 && winners[rowIndex]) {
+                                winners[rowIndex].price = price;
+                                calculateBonus(r, rowIndex);
                             }
-                        });
-                        updateTotals();
-                        syncWinnersToFirebase();
-                        saveAppState();
-                    }
+                        }
+                    });
+                    updateTotals();
+                    syncWinnersToFirebase();
+                    saveAppState();
                 });
 
                 row.querySelector('.remove-btn').addEventListener('click', () => {
                     const originalName = nameCell.dataset.originalName;
-                    // Remove from temp
                     row.remove();
                     Array.from(tempTbody.rows).forEach((r, i) => r.cells[1].textContent = i + 1);
-                    // Remove from main
+
                     let mainRowToRemove = null;
                     Array.from(winnersTableBody.rows).forEach(r => {
                         if (r.cells[2].dataset.originalName === originalName) {
@@ -702,7 +677,7 @@ function initiateSingleMode() {
                         }
                     });
                     if (mainRowToRemove) {
-                        deleteWinner(mainRowToRemove, originalName);
+                        deleteWinner(mainRowToRemove);
                     }
                     if (tempTbody.rows.length === 0 && availableParticipants.length === 0) {
                         finishSingleMode();
@@ -762,7 +737,7 @@ function calculateBonus(row, index) {
         row.cells[5].innerText = '';
         row.cells[6].innerText = '';
         row.classList.remove('green-row');
-        if (index !== undefined) {
+        if (index !== undefined && winners[index]) {
             winners[index].multi = '';
             winners[index].bonus = '';
         }
@@ -774,7 +749,7 @@ function calculateBonus(row, index) {
         row.cells[5].innerText = '';
         row.cells[6].innerText = '';
         row.classList.remove('green-row');
-        if (index !== undefined) {
+        if (index !== undefined && winners[index]) {
             winners[index].multi = '';
             winners[index].bonus = '';
         }
@@ -809,7 +784,7 @@ function calculateBonus(row, index) {
     } else {
         row.classList.remove('green-row');
     }
-    if (index !== undefined) {
+    if (index !== undefined && winners[index]) {
         winners[index].multi = x + 'x';
         winners[index].bonus = bonus;
     }
@@ -903,30 +878,39 @@ function loadAppState() {
             });
             nameCell.addEventListener('input', () => {
                 const name = nameCell.textContent.trim();
-                const oldName = winners[i].name;
-                winners[i].name = name;
-                nameCell.dataset.originalName = name;
-                syncWinnersToFirebase();
-                saveAppState();
+                const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
+                if (rowIndex !== -1 && winners[rowIndex]) {
+                    winners[rowIndex].name = name;
+                    nameCell.dataset.originalName = name;
+                    syncWinnersToFirebase();
+                    saveAppState();
+                }
             });
             priceCell.addEventListener('input', () => {
-                winners[i].price = priceCell.textContent.trim();
-                calculateBonus(row, i);
-                updateTotals();
-                syncWinnersToFirebase();
-                saveAppState();
+                const price = priceCell.textContent.trim();
+                const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
+                if (rowIndex !== -1 && winners[rowIndex]) {
+                    winners[rowIndex].price = price;
+                    calculateBonus(row, rowIndex);
+                    updateTotals();
+                    syncWinnersToFirebase();
+                    saveAppState();
+                }
             });
             payoutCell.addEventListener('input', () => {
-                winners[i].payout = payoutCell.textContent.trim();
-                calculateBonus(row, i);
-                updateTotals();
-                syncWinnersToFirebase();
-                saveAppState();
+                const payout = payoutCell.textContent.trim();
+                const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
+                if (rowIndex !== -1 && winners[rowIndex]) {
+                    winners[rowIndex].payout = payout;
+                    calculateBonus(row, rowIndex);
+                    updateTotals();
+                    syncWinnersToFirebase();
+                    saveAppState();
+                }
             });
             const removeBtn = row.cells[0].querySelector('.remove-btn');
             if (removeBtn) removeBtn.addEventListener('click', () => {
-                deleteWinner(row, row.cells[2].textContent);
-                updateTotals();
+                deleteWinner(row);
             });
         }
         nameCell.dataset.originalName = nameCell.textContent.trim();
@@ -953,12 +937,11 @@ function loadArchives() {
         const archiveKeys = Object.keys(archives).sort();
         archiveDatesSelect.innerHTML = '';
         archiveKeys.reverse().forEach((key, index) => {
-            // Parse key to date
             const isoParts = key.split('-');
             const dateParts = [
-                isoParts[0], // год
-                isoParts[1], // месяц
-                isoParts[2].split('T')[0] // день
+                isoParts[0],
+                isoParts[1],
+                isoParts[2].split('T')[0]
             ];
             const timePart = key.split('T')[1] || '';
             let isoTime = '';
@@ -978,7 +961,6 @@ function loadArchives() {
             let date = new Date(fullIso);
 
             if (isNaN(date.getTime())) {
-                console.log(`Invalid date for key: ${key}, using fallback format`);
                 date = new Date(dateParts.join('-'));
             }
 
@@ -1040,5 +1022,4 @@ function startBuy() {
 
 function stopBuy() {
     syncStatus('stopped');
-
 }
