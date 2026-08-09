@@ -1303,8 +1303,8 @@ function calculateBonus(row, index) {
             rules = customBonusPresets[activePreset];
         } else {
             rules = [
-                { minX: 1100, type: 'fixed', value: '50$' },
-                { minX: 600, type: 'fixed', value: '25$' },
+                { minX: 1100, type: 'fixed', value: '60$' },
+                { minX: 600, type: 'fixed', value: '35$' },
                 { minX: 300, type: 'fixed', value: '15$' },
                 { minX: 200, type: 'fixed', value: '10$' },
                 { minX: 100, type: 'fixed', value: '3$' }
