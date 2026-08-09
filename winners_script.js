@@ -18,8 +18,7 @@ const firebaseConfig = {
     projectId: "everonbonusbuy",
     storageBucket: "everonbonusbuy.firebasestorage.app",
     messagingSenderId: "858564495665",
-    appId: "1:858564495665:web:79e8d27b82faba8f66c810",
-    measurementId: "G-E6X3YGWG5Y"
+    appId: "1:858564495665:web:79e8d27b82faba8f66c810"
 };
 
 // Функция для обрезки имени
@@ -42,7 +41,6 @@ function calculateBestBonuses(winnersData) {
     let bestAmount = { index: -1, name: '', amount: 0 };
     
     winnersData.forEach((winner, index) => {
-        // Парсим multi, убирая 'x'
         const multiplier = winner.multi ? parseFloat(winner.multi.replace('x', '')) || 0 : 0;
         const payout = parseFloat(winner.payout) || 0;
         
@@ -204,14 +202,15 @@ function initializeFirebase() {
         const db = firebase.database();
         const auth = firebase.auth();
 
-        auth.signInAnonymously()
-            .then(() => console.log('Firebase anonymous auth successful in widget'))
-            .catch(error => {
-                console.error('Firebase auth error in widget:', error);
-                if (error.code === 'auth/configuration-not-found') {
-                    console.error('Anonymous authentication is not enabled in Firebase Console. Please enable it.');
-                }
-            });
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                auth.signInAnonymously()
+                    .then(() => console.log('Firebase anonymous auth successful in widget'))
+                    .catch(error => console.error('Firebase auth error in widget:', error));
+            } else {
+                console.log('Widget using existing auth session');
+            }
+        });
 
         db.ref('currentWinners').on('value', (snapshot) => {
             const winnersData = snapshot.val() || [];
@@ -260,62 +259,11 @@ function waitForFirebase() {
     }
 }
 
-function generateOBSLink(currency) {
-    let baseUrl;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        baseUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
-    } else {
-        baseUrl = 'https://oneadie.github.io/NewEveronBonusBuy/winners_widget.html';
-    }
-    const url = `${baseUrl}?obs=1&currency=${currency}&_=${Date.now()}`;
-    const input = document.getElementById('obs-url');
-    input.value = url;
-    input.select();
-    navigator.clipboard.writeText(url).then(() => {
-        alert('OBS URL copied to clipboard! Use this in OBS Browser Source.');
-        console.log('OBS URL generated:', url);
-    });
-}
-
 window.addEventListener('load', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const isOBS = urlParams.has('obs');
-    let curr = urlParams.get('currency') || localStorage.getItem('currency') || 'usd';
-    if (isOBS) {
-        curr = urlParams.get('currency') || 'usd';
-    } else {
-        localStorage.setItem('currency', curr);
-    }
+    let curr = urlParams.get('currency') || 'usd';
     currencySymbol = curr === 'rub' ? '₽' : '$';
-    if (!isOBS) {
-        document.getElementById('settings-btn').style.display = 'block';
-        document.getElementById('settings-btn').addEventListener('click', () => {
-            document.getElementById('modal-overlay').style.display = 'flex';
-            const radios = document.querySelectorAll('input[name="currency"]');
-            radios.forEach(r => {
-                if (r.value === (localStorage.getItem('currency') || 'usd')) r.checked = true;
-            });
-        });
-        document.getElementById('close-modal').addEventListener('click', () => {
-            document.getElementById('modal-overlay').style.display = 'none';
-        });
-        document.getElementById('generate-btn').addEventListener('click', () => {
-            const selectedCurrency = document.querySelector('input[name="currency"]:checked').value;
-            localStorage.setItem('currency', selectedCurrency);
-            currencySymbol = selectedCurrency === 'rub' ? '₽' : '$';
-            updateWinnersTable(lastWinnersData);
-            generateOBSLink(selectedCurrency);
-        });
-        const radios = document.querySelectorAll('input[name="currency"]');
-        radios.forEach(r => {
-            r.addEventListener('change', () => {
-                const val = r.value;
-                localStorage.setItem('currency', val);
-                currencySymbol = val === 'rub' ? '₽' : '$';
-                updateWinnersTable(lastWinnersData);
-            });
-        });
-    }
     console.log('Winners widget loaded');
     waitForFirebase();
     setTimeout(() => {

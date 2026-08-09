@@ -5,8 +5,7 @@ const firebaseConfig = {
     projectId: "everonbonusbuy",
     storageBucket: "everonbonusbuy.firebasestorage.app",
     messagingSenderId: "858564495665",
-    appId: "1:858564495665:web:79e8d27b82faba8f66c810",
-    measurementId: "G-E6X3YGWG5Y"
+    appId: "1:858564495665:web:79e8d27b82faba8f66c810"
 };
 
 // Инициализация Firebase
@@ -14,15 +13,84 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
-// Анонимный логин
-auth.signInAnonymously()
-  .then(() => console.log('Firebase anonymous auth successful'))
-  .catch(error => console.error('Firebase auth error:', error));
+// ==================== LOGIN ====================
+const loginOverlay = document.getElementById('login-overlay');
+const appContainer = document.getElementById('app-container');
+const loginBtn = document.getElementById('login-btn');
+const loginEmail = document.getElementById('login-email');
+const loginPassword = document.getElementById('login-password');
+const loginError = document.getElementById('login-error');
+const logoutBtn = document.getElementById('logout-btn');
+
+loginBtn.addEventListener('click', doLogin);
+loginPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+logoutBtn.addEventListener('click', () => {
+    auth.signOut().then(() => window.location.reload());
+});
+
+function doLogin() {
+    const email = loginEmail.value.trim();
+    const password = loginPassword.value;
+    const rememberMe = document.getElementById('login-remember').checked;
+    if (!email || !password) {
+        showLoginError('Введите email и пароль');
+        return;
+    }
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Вход...';
+    
+    const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
+    
+    auth.setPersistence(persistence)
+        .then(() => auth.signInWithEmailAndPassword(email, password))
+        .then(() => {
+            console.log('Login successful');
+        })
+        .catch(error => {
+            console.error('Login error:', error);
+            let msg = 'Ошибка входа';
+            if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                msg = 'Неверный email или пароль';
+            } else if (error.code === 'auth/invalid-email') {
+                msg = 'Неверный формат email';
+            } else if (error.code === 'auth/too-many-requests') {
+                msg = 'Слишком много попыток. Подождите';
+            }
+            showLoginError(msg);
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Войти';
+        });
+}
+
+function showLoginError(msg) {
+    loginError.textContent = msg;
+    loginError.style.display = 'block';
+    setTimeout(() => { loginError.style.display = 'none'; }, 4000);
+}
+
+// Слушаем состояние авторизации
+auth.onAuthStateChanged(user => {
+    if (user && user.email) {
+        // Залогинен через email/password — показываем приложение
+        loginOverlay.style.display = 'none';
+        appContainer.style.display = 'block';
+        initApp();
+    } else {
+        // Не залогинен — показываем форму логина
+        loginOverlay.style.display = 'flex';
+        appContainer.style.display = 'none';
+    }
+});
+
+// ==================== FIREBASE SYNC ====================
+let isInitialLoad = true;
 
 function syncWinnersToFirebase() {
+    if (isInitialLoad) return; // Не синкаем при начальной загрузке
     console.log('Syncing winners to Firebase:', JSON.stringify(winners));
     if (auth.currentUser) {
-        db.ref('currentWinners').set(winners)
+        db.ref('currentWinners').set(winners);
+        db.ref('bonusMode').set(bonusModeSelect.value)
             .then(() => {
                 console.log('Successfully synced winners to Firebase:', winners);
             })
@@ -49,87 +117,550 @@ function archiveWinners() {
     db.ref('archives/' + timestamp).set({ winners, totals, date: timestamp });
 }
 
+// ==================== APP STATE ====================
 let participantId = 1;
 let winnerId = 1;
 let participants = [];
 let winners = [];
-let animationDuration = 3; // Total animation duration
+let animationDuration = 3;
 let isSingleMode = false;
 let buyNumber = 1;
 let isViewMode = false;
 let currentArchiveKey = null;
+let appInitialized = false;
 
-const parseButton = document.getElementById('parse-participants');
-const participantInput = document.getElementById('participant-input');
-const limitInput = document.getElementById('winner-limit');
-const startButton = document.getElementById('start-spin');
-const spinOneButton = document.getElementById('spin-one');
-const transferAllButton = document.getElementById('transfer-all');
-const resetControlsButton = document.getElementById('reset-controls');
-const resetWinnersButton = document.getElementById('reset-winners');
-const addEveronButton = document.getElementById('add-everon');
-const bonusModeSelect = document.getElementById('bonus-mode-select');
-const participantsTableBody = document.getElementById('participants-table').querySelector('tbody');
-const winnersSection = document.getElementById('winners-section');
-const winnersTableBody = document.getElementById('winners-table').querySelector('tbody');
-const inputSection = document.getElementById('input-section');
-const controlsSection = document.getElementById('controls');
-const participantsSection = document.getElementById('participants-section');
-const multiModal = document.getElementById('multi-modal');
-const reelsContainer = document.getElementById('reels-container');
-const closeModal = document.getElementById('close-modal');
-const addMoreButton = document.getElementById('add-more');
-const addMoreModal = document.getElementById('add-more-modal');
-const closeAddModal = document.getElementById('close-add-modal');
-const selectMoreButton = document.getElementById('select-more');
-const additionalLimitInput = document.getElementById('additional-limit');
-const totalSpentSpan = document.getElementById('total-spent');
-const totalReceivedSpan = document.getElementById('total-received');
-const paybackPercentSpan = document.getElementById('payback-percent');
-const buyNumberSpan = document.getElementById('buy-number');
-const archiveDatesSelect = document.getElementById('archive-dates');
-const viewArchiveButton = document.getElementById('view-archive');
-const backToCurrentButton = document.getElementById('back-to-current');
-const startBuyButton = document.getElementById('start-buy');
-const stopBuyButton = document.getElementById('stop-buy');
+let customBonusPresets = {
+    'Правило 1': [
+        { minX: 1100, type: 'fixed', value: '50$' },
+        { minX: 600, type: 'fixed', value: '25$' },
+        { minX: 300, type: 'fixed', value: '15$' },
+        { minX: 200, type: 'fixed', value: '10$' },
+        { minX: 100, type: 'fixed', value: '3$' }
+    ]
+};
+let activePreset = 'Правило 1';
+let percentValue = 10;
+let percentThreshold = 200;
 
-window.addEventListener('load', loadAppState);
-parseButton.addEventListener('click', parseTelegramInput);
-limitInput.addEventListener('input', saveAppState);
-startButton.addEventListener('click', () => initiateMultiSelection(parseInt(limitInput.value)));
-spinOneButton.addEventListener('click', initiateSingleMode);
-transferAllButton.addEventListener('click', transferAllToWinners);
-resetControlsButton.addEventListener('click', resetWithoutArchive);
-resetWinnersButton.addEventListener('click', resetWithArchive);
-addEveronButton.addEventListener('click', () => addWinnerRow({ name: 'everon' }));
-bonusModeSelect.addEventListener('change', () => {
-    updateAllBonuses();
-    saveAppState();
-});
-addMoreButton.addEventListener('click', () => {
-    addMoreModal.style.display = 'block';
-});
-closeAddModal.addEventListener('click', () => {
-    addMoreModal.style.display = 'none';
-});
-selectMoreButton.addEventListener('click', () => {
-    addMoreModal.style.display = 'none';
-    initiateMultiSelection(parseInt(additionalLimitInput.value));
-});
-closeModal.addEventListener('click', () => {
-    multiModal.style.display = 'none';
-    document.body.style.overflow = ''; 
-    if (isSingleMode) {
-        finishSingleMode && finishSingleMode();
-    } else {
-        showWinnersSection();
+// DOM Elements (initialized in initApp)
+let parseButton, participantInput, limitInput, startButton, spinOneButton;
+let transferAllButton, resetControlsButton, resetWinnersButton, addEveronButton;
+let bonusModeSelect, participantsTableBody, winnersSection, winnersTableBody;
+let inputSection, controlsSection, participantsSection, multiModal, reelsContainer;
+let closeModal, addMoreButton, addMoreModal, closeAddModal, selectMoreButton;
+let additionalLimitInput, totalSpentSpan, totalReceivedSpan, paybackPercentSpan;
+let buyNumberSpan, archiveDatesSelect, viewArchiveButton, backToCurrentButton;
+let startBuyButton, stopBuyButton;
+
+function initApp() {
+    if (appInitialized) return;
+    appInitialized = true;
+
+    parseButton = document.getElementById('parse-participants');
+    participantInput = document.getElementById('participant-input');
+    limitInput = document.getElementById('winner-limit');
+    startButton = document.getElementById('start-spin');
+    spinOneButton = document.getElementById('spin-one');
+    transferAllButton = document.getElementById('transfer-all');
+    resetControlsButton = document.getElementById('reset-controls');
+    resetWinnersButton = document.getElementById('reset-winners');
+    addEveronButton = document.getElementById('add-everon');
+    bonusModeSelect = document.getElementById('bonus-mode-select');
+    participantsTableBody = document.getElementById('participants-table').querySelector('tbody');
+    winnersSection = document.getElementById('winners-section');
+    winnersTableBody = document.getElementById('winners-table').querySelector('tbody');
+    inputSection = document.getElementById('input-section');
+    controlsSection = document.getElementById('controls');
+    participantsSection = document.getElementById('participants-section');
+    multiModal = document.getElementById('multi-modal');
+    reelsContainer = document.getElementById('reels-container');
+    closeModal = document.getElementById('close-modal');
+    addMoreButton = document.getElementById('add-more');
+    addMoreModal = document.getElementById('add-more-modal');
+    closeAddModal = document.getElementById('close-add-modal');
+    selectMoreButton = document.getElementById('select-more');
+    additionalLimitInput = document.getElementById('additional-limit');
+    totalSpentSpan = document.getElementById('total-spent');
+    totalReceivedSpan = document.getElementById('total-received');
+    paybackPercentSpan = document.getElementById('payback-percent');
+    buyNumberSpan = document.getElementById('buy-number');
+    archiveDatesSelect = document.getElementById('archive-dates');
+    viewArchiveButton = document.getElementById('view-archive');
+    backToCurrentButton = document.getElementById('back-to-current');
+    startBuyButton = document.getElementById('start-buy');
+    stopBuyButton = document.getElementById('stop-buy');
+
+    // Event listeners
+    parseButton.addEventListener('click', parseTelegramInput);
+    limitInput.addEventListener('input', saveAppState);
+    startButton.addEventListener('click', () => initiateMultiSelection(parseInt(limitInput.value)));
+    spinOneButton.addEventListener('click', initiateSingleMode);
+    transferAllButton.addEventListener('click', transferAllToWinners);
+    resetControlsButton.addEventListener('click', resetWithoutArchive);
+    resetWinnersButton.addEventListener('click', resetWithArchive);
+    addEveronButton.addEventListener('click', () => addWinnerRow({ name: 'everon' }));
+    addMoreButton.addEventListener('click', () => {
+        addMoreModal.style.display = 'block';
+    });
+    closeAddModal.addEventListener('click', () => {
+        addMoreModal.style.display = 'none';
+    });
+    selectMoreButton.addEventListener('click', () => {
+        addMoreModal.style.display = 'none';
+        initiateMultiSelection(parseInt(additionalLimitInput.value));
+    });
+    closeModal.addEventListener('click', () => {
+        multiModal.style.display = 'none';
+        document.body.style.overflow = '';
+        if (isSingleMode) {
+            finishSingleMode && finishSingleMode();
+        } else {
+            showWinnersSection();
+        }
+    });
+    viewArchiveButton.addEventListener('click', viewArchive);
+    backToCurrentButton.addEventListener('click', backToCurrent);
+    startBuyButton.addEventListener('click', startBuy);
+    stopBuyButton.addEventListener('click', stopBuy);
+
+    // Widget settings modal
+    const widgetSettingsBtn = document.getElementById('widget-settings-btn');
+    const widgetSettingsModal = document.getElementById('widget-settings-modal');
+    const closeWidgetSettings = document.getElementById('close-widget-settings');
+    const generateWidgetUrl = document.getElementById('generate-widget-url');
+
+    widgetSettingsBtn.addEventListener('click', () => {
+        widgetSettingsModal.style.display = 'block';
+    });
+    closeWidgetSettings.addEventListener('click', () => {
+        widgetSettingsModal.style.display = 'none';
+    });
+    generateWidgetUrl.addEventListener('click', generateWidgetOBSLink);
+
+    // Bonus rules modal
+    const editBonusRulesBtn = document.getElementById('edit-bonus-rules');
+    const bonusRulesModal = document.getElementById('bonus-rules-modal');
+    const closeBonusRules = document.getElementById('close-bonus-rules');
+    const presetSelector = document.getElementById('preset-selector');
+    const addPresetBtn = document.getElementById('add-preset-btn');
+    const deletePresetBtn = document.getElementById('delete-preset-btn');
+    
+    bonusModeSelect.addEventListener('change', () => {
+        editBonusRulesBtn.style.display = (bonusModeSelect.value === 'custom' || bonusModeSelect.value === 'percent') ? 'inline-block' : 'none';
+        updateAllBonuses();
+        saveAppState();
+    });
+    
+    editBonusRulesBtn.addEventListener('click', () => {
+        updatePresetSelector();
+        renderBonusRulesEditor();
+        bonusRulesModal.style.display = 'block';
+    });
+    closeBonusRules.addEventListener('click', () => { bonusRulesModal.style.display = 'none'; });
+    
+    presetSelector.addEventListener('change', (e) => {
+        activePreset = e.target.value;
+        renderBonusRulesEditor();
+    });
+    
+    addPresetBtn.addEventListener('click', () => {
+        let presetNum = Object.keys(customBonusPresets).length + 1;
+        let newName = 'Правило ' + presetNum;
+        while (customBonusPresets[newName]) {
+            presetNum++;
+            newName = 'Правило ' + presetNum;
+        }
+        customBonusPresets[newName] = [ { minX: 100, type: 'fixed', value: '5$' } ];
+        activePreset = newName;
+        updatePresetSelector();
+        renderBonusRulesEditor();
+    });
+    
+    deletePresetBtn.addEventListener('click', () => {
+        if (Object.keys(customBonusPresets).length <= 1) {
+            alert('Нельзя удалить последний пресет!');
+            return;
+        }
+        delete customBonusPresets[activePreset];
+        activePreset = Object.keys(customBonusPresets)[0];
+        updatePresetSelector();
+        renderBonusRulesEditor();
+    });
+    
+    document.getElementById('add-bonus-rule').addEventListener('click', () => {
+        if (!customBonusPresets[activePreset]) return;
+        customBonusPresets[activePreset].push({ minX: 100, type: 'fixed', value: '5$' });
+        renderBonusRulesEditor();
+    });
+    
+    document.getElementById('save-bonus-rules').addEventListener('click', () => {
+        // Read rules from editor
+        if (customBonusPresets[activePreset]) {
+            customBonusPresets[activePreset] = [];
+            document.querySelectorAll('.bonus-rule-row').forEach(row => {
+                const minX = parseInt(row.querySelector('.rule-minx').value) || 0;
+                const type = row.querySelector('.rule-type').value;
+                const value = row.querySelector('.rule-prize').value.trim() || '0';
+                if (minX > 0) customBonusPresets[activePreset].push({ minX, type, value });
+            });
+        }
+        localStorage.setItem('customBonusPresets', JSON.stringify(customBonusPresets));
+        localStorage.setItem('activePreset', activePreset);
+        bonusRulesModal.style.display = 'none';
+        updateAllBonuses();
+        saveAppState();
+    });
+    
+    // Load saved bonus rules
+    const savedPresets = localStorage.getItem('customBonusPresets');
+    if (savedPresets) {
+        try { customBonusPresets = JSON.parse(savedPresets); } catch(e) {}
     }
-});
-viewArchiveButton.addEventListener('click', viewArchive);
-backToCurrentButton.addEventListener('click', backToCurrent);
-startBuyButton.addEventListener('click', startBuy);
-stopBuyButton.addEventListener('click', stopBuy);
+    const savedActivePreset = localStorage.getItem('activePreset');
+    if (savedActivePreset && customBonusPresets[savedActivePreset]) {
+        activePreset = savedActivePreset;
+    } else {
+        activePreset = Object.keys(customBonusPresets)[0];
+    }
+    editBonusRulesBtn.style.display = (bonusModeSelect.value === 'custom' || bonusModeSelect.value === 'percent') ? 'inline-block' : 'none';
 
+    // Tab switching
+    document.querySelectorAll('.input-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.input-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(tab.dataset.tab).classList.add('active');
+        });
+    });
+
+    // Telegram channel integration
+    document.getElementById('load-posts-btn').addEventListener('click', loadChannelPosts);
+    document.getElementById('channel-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadChannelPosts(); });
+    document.getElementById('back-to-posts').addEventListener('click', () => {
+        document.getElementById('comments-section').style.display = 'none';
+        document.getElementById('posts-list').style.display = 'flex';
+    });
+    document.getElementById('select-all-comments').addEventListener('click', () => toggleAllComments(true));
+    document.getElementById('deselect-all-comments').addEventListener('click', () => toggleAllComments(false));
+    document.getElementById('add-commenters').addEventListener('click', addSelectedCommenters);
+
+    // Restore saved channel name
+    const savedChannel = localStorage.getItem('savedChannelName');
+    if (savedChannel) document.getElementById('channel-name').value = savedChannel;
+
+    // Load app state
+    loadAppState();
+}
+
+// ==================== WIDGET OBS LINK ====================
+function generateWidgetOBSLink() {
+    const currency = document.querySelector('input[name="widget-currency"]:checked').value;
+    let baseUrl;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') {
+        baseUrl = window.location.href.split('/').slice(0, -1).join('/') + '/winners_widget.html';
+    } else {
+        baseUrl = 'https://oneadie.github.io/NewEveronBonusBuy/winners_widget.html';
+    }
+    const url = `${baseUrl}?obs=1&currency=${currency}&_=${Date.now()}`;
+    const input = document.getElementById('widget-obs-url');
+    input.value = url;
+    input.select();
+    navigator.clipboard.writeText(url).then(() => {
+        alert('OBS URL скопирован в буфер обмена!');
+    }).catch(() => {
+        input.select();
+        document.execCommand('copy');
+        alert('OBS URL скопирован!');
+    });
+}
+
+// ==================== TELEGRAM CHANNEL INTEGRATION ====================
+// ⬇️ ВСТАВЬ СЮДА URL СВОЕГО CLOUDFLARE WORKER ⬇️
+const WORKER_URL = 'https://tg-proxy.play585588.workers.dev';
+
+async function fetchViaCorsProxy(url) {
+    const proxies = [];
+
+    // Cloudflare Worker — основной (быстрый и надёжный)
+    if (WORKER_URL) {
+        proxies.push({ url: `${WORKER_URL}?url=${encodeURIComponent(url)}`, json: false, timeout: 12000 });
+    }
+
+    // Fallback прокси
+    proxies.push(
+        { url: `https://corsproxy.org/?url=${encodeURIComponent(url)}`, json: false, timeout: 10000 },
+        { url: `https://corsproxy.io/?url=${encodeURIComponent(url)}`, json: false, timeout: 10000 },
+        { url: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, json: true, timeout: 10000 }
+    );
+
+    let lastError;
+    for (const proxy of proxies) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), proxy.timeout);
+        try {
+            const response = await fetch(proxy.url, {
+                signal: controller.signal,
+                headers: { 'Accept': 'text/html,application/json' }
+            });
+            clearTimeout(timer);
+            if (response.ok) {
+                if (proxy.json) {
+                    const data = await response.json();
+                    return data.contents || '';
+                }
+                return await response.text();
+            }
+            lastError = new Error(`HTTP ${response.status}`);
+        } catch (e) {
+            clearTimeout(timer);
+            lastError = e.name === 'AbortError' ? new Error('Таймаут') : e;
+        }
+    }
+    throw lastError || new Error('Все прокси недоступны');
+}
+
+function showTgLoading(show) {
+    document.getElementById('tg-loading').style.display = show ? 'flex' : 'none';
+}
+
+function showTgError(msg) {
+    const el = document.getElementById('tg-error');
+    if (msg) {
+        el.textContent = msg;
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+async function loadChannelPosts() {
+    let channelRaw = document.getElementById('channel-name').value.trim();
+    // Extract channel name from various URL formats
+    channelRaw = channelRaw.replace(/^https?:\/\/(web\.)?telegram\.org\/k\/#@?/, '')
+                           .replace(/^https?:\/\/t\.me\//, '')
+                           .replace(/^@/, '')
+                           .replace(/\/.*$/, '')
+                           .trim();
+    const channelName = channelRaw;
+    document.getElementById('channel-name').value = channelName; // Show cleaned name
+
+    if (channelName) localStorage.setItem('savedChannelName', channelName);
+
+    if (!channelName) {
+        showTgError('Введите имя канала');
+        return;
+    }
+
+    showTgError('');
+    showTgLoading(true);
+    document.getElementById('posts-list').style.display = 'none';
+    document.getElementById('comments-section').style.display = 'none';
+
+    try {
+        const html = await fetchViaCorsProxy(`https://t.me/s/${channelName}`);
+        const posts = parsePostsFromHTML(html, channelName);
+
+        if (posts.length === 0) {
+            showTgError('Посты не найдены. Проверьте имя канала.');
+            showTgLoading(false);
+            return;
+        }
+
+        const postsList = document.getElementById('posts-list');
+        postsList.innerHTML = '';
+        posts.reverse().forEach(post => {
+            const card = document.createElement('div');
+            card.className = 'post-card';
+            card.innerHTML = `
+                <div class="post-date">${post.date || 'Дата неизвестна'}</div>
+                <div class="post-preview">${post.text || '(медиа/без текста)'}</div>
+                <div class="post-meta">
+                    <span>👁 ${post.views || '?'}</span>
+                    <span>💬 ${post.comments || '?'}</span>
+                    <span>#${post.id}</span>
+                </div>
+            `;
+            card.addEventListener('click', () => loadPostComments(channelName, post.id));
+            postsList.appendChild(card);
+        });
+
+        postsList.style.display = 'flex';
+        showTgLoading(false);
+    } catch (error) {
+        console.error('Error loading posts:', error);
+        showTgError(`Ошибка загрузки: ${error.message}. Попробуйте ещё раз.`);
+        showTgLoading(false);
+    }
+}
+
+function parsePostsFromHTML(html, channelName) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const posts = [];
+
+    doc.querySelectorAll('.tgme_widget_message').forEach(msgEl => {
+        const dataPost = msgEl.getAttribute('data-post');
+        if (!dataPost) return;
+        const postId = dataPost.split('/')[1];
+
+        // Get text
+        const textEl = msgEl.querySelector('.tgme_widget_message_text');
+        let text = '';
+        if (textEl) {
+            text = textEl.textContent.trim().substring(0, 200);
+        }
+
+        // Get date
+        const dateEl = msgEl.querySelector('.tgme_widget_message_date time');
+        let date = '';
+        if (dateEl) {
+            const datetime = dateEl.getAttribute('datetime');
+            if (datetime) {
+                const d = new Date(datetime);
+                date = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            }
+        }
+
+        // Get views
+        const viewsEl = msgEl.querySelector('.tgme_widget_message_views');
+        const views = viewsEl ? viewsEl.textContent.trim() : '?';
+
+        // Get comments count (from reply button)
+        const repliesEl = msgEl.querySelector('.tgme_widget_message_replies .tgme_widget_message_short_text');
+        const comments = repliesEl ? repliesEl.textContent.trim() : '0';
+
+        posts.push({ id: postId, text, date, views, comments });
+    });
+
+    return posts;
+}
+
+async function loadPostComments(channelName, postId) {
+    showTgError('');
+    showTgLoading(true);
+    document.getElementById('posts-list').style.display = 'none';
+    document.getElementById('comments-section').style.display = 'none';
+
+    try {
+        const url = `https://t.me/${channelName}/${postId}?embed=1&discussion=1&comments_limit=200&userpic=true`;
+        const html = await fetchViaCorsProxy(url);
+        const commenters = parseCommentsFromHTML(html);
+
+        if (commenters.length === 0) {
+            showTgError('Комментарии не найдены. Возможно, у поста нет комментариев или нет группы обсуждений.');
+            document.getElementById('posts-list').style.display = 'flex';
+            showTgLoading(false);
+            return;
+        }
+
+        document.getElementById('selected-post-id').textContent = `#${postId}`;
+        const commentsList = document.getElementById('comments-list');
+        commentsList.innerHTML = '';
+
+        commenters.forEach((commenter, index) => {
+            const item = document.createElement('div');
+            item.className = 'comment-item selected';
+            item.innerHTML = `
+                <input type="checkbox" id="comment-${index}" checked>
+                <span class="comment-name">${commenter.name}</span>
+                <span class="comment-text">${commenter.text}</span>
+            `;
+            const checkbox = item.querySelector('input');
+            item.addEventListener('click', (e) => {
+                if (e.target !== checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                }
+                item.classList.toggle('selected', checkbox.checked);
+                updateCommentsCount();
+            });
+            checkbox.addEventListener('change', () => {
+                item.classList.toggle('selected', checkbox.checked);
+                updateCommentsCount();
+            });
+            commentsList.appendChild(item);
+        });
+
+        document.getElementById('comments-section').style.display = 'block';
+        updateCommentsCount();
+        showTgLoading(false);
+    } catch (error) {
+        console.error('Error loading comments:', error);
+        showTgError(`Ошибка загрузки комментариев: ${error.message}`);
+        document.getElementById('posts-list').style.display = 'flex';
+        showTgLoading(false);
+    }
+}
+
+function parseCommentsFromHTML(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const commenters = [];
+    const seenNames = new Set();
+
+    doc.querySelectorAll('.tgme_widget_message').forEach(msgEl => {
+        const authorEl = msgEl.querySelector('.tgme_widget_message_author_name');
+        if (!authorEl) return;
+
+        const name = authorEl.textContent.trim();
+        if (!name || seenNames.has(name.toLowerCase())) return;
+        seenNames.add(name.toLowerCase());
+
+        const textEl = msgEl.querySelector('.tgme_widget_message_text');
+        const text = textEl ? textEl.textContent.trim().substring(0, 80) : '';
+
+        commenters.push({ name, text });
+    });
+
+    return commenters;
+}
+
+function toggleAllComments(selectAll) {
+    document.querySelectorAll('.comment-item').forEach(item => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        checkbox.checked = selectAll;
+        item.classList.toggle('selected', selectAll);
+    });
+    updateCommentsCount();
+}
+
+function updateCommentsCount() {
+    const checked = document.querySelectorAll('.comment-item input:checked').length;
+    const total = document.querySelectorAll('.comment-item').length;
+    document.getElementById('comments-count').textContent = `${checked} из ${total} выбрано`;
+    document.getElementById('add-commenters').disabled = checked === 0;
+}
+
+function addSelectedCommenters() {
+    const selectedCommenters = [];
+    document.querySelectorAll('.comment-item').forEach(item => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (checkbox.checked) {
+            const tgNick = item.querySelector('.comment-name').textContent.trim();
+            const commentText = item.querySelector('.comment-text').textContent.trim();
+            selectedCommenters.push({ name: commentText || tgNick, tgNick });
+        }
+    });
+
+    if (selectedCommenters.length === 0) {
+        alert('Выберите хотя бы одного участника');
+        return;
+    }
+
+    // Reset state and add participants
+    participants = [];
+    participantsTableBody.innerHTML = '';
+    participantId = 1;
+    selectedCommenters.forEach(c => addParticipantRow(c.name, c.tgNick));
+
+    // Switch to controls
+    inputSection.style.display = 'none';
+    controlsSection.style.display = 'block';
+    participantsSection.style.display = 'block';
+    saveAppState();
+}
+
+// ==================== TELEGRAM PARSER ====================
 function parseTelegramInput() {
     const input = participantInput.value.trim();
     if (!input) return;
@@ -162,7 +693,7 @@ function parseTelegramInput() {
                 if (name) parsedParticipants.push({ name });
                 currentEntry = [];
             }
-            return; // Пропускаем строку с датой
+            return;
         }
 
         currentEntry.push(line);
@@ -184,11 +715,13 @@ function parseTelegramInput() {
     saveAppState();
 }
 
-function addParticipantRow(name = '', isLoading = false) {
+// ==================== PARTICIPANTS ====================
+function addParticipantRow(name = '', tgNick = '', isLoading = false) {
     const row = participantsTableBody.insertRow();
     row.innerHTML = `
         <td>${participantId++}</td>
         <td contenteditable="true">${name}</td>
+        <td class="tg-nick-cell">${tgNick}</td>
         <td class="action-buttons">
             <button class="remove-btn">✕</button>
         </td>
@@ -220,6 +753,7 @@ function fetchParticipants() {
     return participants;
 }
 
+// ==================== WINNERS ====================
 function addWinnerRow(person, price = '', payout = '', isLoading = false) {
     const row = winnersTableBody.insertRow();
     row.innerHTML = `
@@ -251,7 +785,7 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
             const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
             if (rowIndex !== -1 && winners[rowIndex]) {
                 winners[rowIndex].name = name;
-                nameCell.dataset.originalName = name; 
+                nameCell.dataset.originalName = name;
                 syncWinnersToFirebase();
                 saveAppState();
             }
@@ -326,6 +860,7 @@ function resetWithoutArchive() {
     window.location.reload();
 }
 
+// ==================== SELECTION ====================
 function transferAllToWinners() {
     const currentParticipants = fetchParticipants();
     const availableParticipants = currentParticipants.filter(p => !winners.some(w => w.name === p.name));
@@ -410,8 +945,8 @@ function initiateMultiSelection(limit) {
         const len = currentParticipants.length;
         const ori = currentParticipants.findIndex(p => p.name === winner.name);
         const randomCopy = Math.floor(Math.random() * (numDuplicates - 2)) + 1;
-        const winnerIndex = randomCopy * len + ori;
-        let winnerPosition = winnerIndex * itemHeight - (flapperTop - itemHeight / 2);
+        const winnerIdx = randomCopy * len + ori;
+        let winnerPosition = winnerIdx * itemHeight - (flapperTop - itemHeight / 2);
         const randomOffset = (Math.random() * (itemHeight - 20)) - (itemHeight / 2 - 10);
         winnerPosition += randomOffset;
 
@@ -723,12 +1258,14 @@ function initiateSingleMode() {
     }
 }
 
+// ==================== UI HELPERS ====================
 function showWinnersSection() {
     controlsSection.style.display = 'none';
     participantsSection.style.display = 'none';
     winnersSection.style.display = 'block';
 }
 
+// ==================== BONUS CALCULATIONS ====================
 function calculateBonus(row, index) {
     const mode = bonusModeSelect.value;
     const priceStr = row.cells[3].textContent.trim();
@@ -736,7 +1273,7 @@ function calculateBonus(row, index) {
     if (!priceStr || !payoutStr) {
         row.cells[5].innerText = '';
         row.cells[6].innerText = '';
-        row.classList.remove('green-row');
+        row.classList.remove('green-row', 'consolation-row', 'bonus-row');
         if (index !== undefined && winners[index]) {
             winners[index].multi = '';
             winners[index].bonus = '';
@@ -748,7 +1285,7 @@ function calculateBonus(row, index) {
     if (price <= 0 || payout <= 0) {
         row.cells[5].innerText = '';
         row.cells[6].innerText = '';
-        row.classList.remove('green-row');
+        row.classList.remove('green-row', 'consolation-row', 'bonus-row');
         if (index !== undefined && winners[index]) {
             winners[index].multi = '';
             winners[index].bonus = '';
@@ -758,35 +1295,85 @@ function calculateBonus(row, index) {
     const multi = payout / price;
     const x = Math.round(multi * 100);
     row.cells[5].innerText = x + 'x';
-    let bonus = '';
-    if (mode === 'shuffle') {
-        if (x >= 1100) bonus = '50$';
-        else if (x >= 600) bonus = '25$';
-        else if (x >= 300) bonus = '15$';
-        else if (x >= 200) bonus = '10$';
-        else if (x >= 100) bonus = '3$';
-        else bonus = 'gg';
-    } else {
-        if (x < 200) {
-            bonus = 'gg';
+    let bonus = 'gg';
+
+    if (mode === 'shuffle' || mode === 'custom') {
+        let rules;
+        if (mode === 'custom' && customBonusPresets[activePreset] && customBonusPresets[activePreset].length > 0) {
+            rules = customBonusPresets[activePreset];
         } else {
-            const excess = payout;
-            if (excess <= 0) {
-                bonus = 'gg';
-            } else {
-                bonus = Math.round(0.1 * excess);
+            rules = [
+                { minX: 1100, type: 'fixed', value: '50$' },
+                { minX: 600, type: 'fixed', value: '25$' },
+                { minX: 300, type: 'fixed', value: '15$' },
+                { minX: 200, type: 'fixed', value: '10$' },
+                { minX: 100, type: 'fixed', value: '3$' }
+            ];
+        }
+        const sorted = [...rules].sort((a, b) => b.minX - a.minX);
+        for (const rule of sorted) {
+            if (x >= rule.minX) {
+                if (rule.type === 'percent') {
+                    const amount = Math.round((parseFloat(rule.value) / 100) * payout);
+                    bonus = amount > 0 ? amount + '$' : 'gg';
+                } else {
+                    bonus = rule.value;
+                }
+                break;
             }
         }
+    } else if (mode === 'percent') {
+        if (x >= percentThreshold) {
+            const amount = Math.round((percentValue / 100) * payout);
+            bonus = amount > 0 ? amount + '$' : 'gg';
+        }
     }
+
     row.cells[6].innerText = bonus;
+    row.classList.remove('green-row', 'consolation-row', 'bonus-row');
     if (bonus !== 'gg') {
         row.classList.add('green-row');
-    } else {
-        row.classList.remove('green-row');
     }
     if (index !== undefined && winners[index]) {
         winners[index].multi = x + 'x';
         winners[index].bonus = bonus;
+    }
+}
+
+function renderBonusRulesEditor() {
+    const container = document.getElementById('bonus-rules-container');
+    container.innerHTML = '';
+    const rules = customBonusPresets[activePreset] || [];
+    rules.forEach((rule, i) => {
+        const div = document.createElement('div');
+        div.className = 'bonus-rule-row';
+        div.style.cssText = 'display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;';
+        const isFixed = rule.type !== 'percent';
+        div.innerHTML = `
+            <span>Если >=</span>
+            <input type="number" class="rule-minx" value="${rule.minX}" style="width:90px;padding:8px;border:2px solid #6242ff;border-radius:8px;background:#2a2a5a;color:#d1d1f5;font-size:1.1em;font-weight:bold;">
+            <span>x →</span>
+            <select class="rule-type" style="padding:8px;border:2px solid #6242ff;border-radius:8px;background:#2a2a5a;color:#d1d1f5;font-size:1em;">
+                <option value="fixed" ${isFixed ? 'selected' : ''}>$ Фикс</option>
+                <option value="percent" ${!isFixed ? 'selected' : ''}>% от выигрыша</option>
+            </select>
+            <input type="text" class="rule-prize" value="${rule.value}" style="width:100px;padding:8px;border:2px solid #6242ff;border-radius:8px;background:#2a2a5a;color:#d1d1f5;font-size:1.1em;font-weight:bold;" placeholder="${isFixed ? '50$' : '10'}">
+            <button class="remove-btn" onclick="this.parentElement.remove()" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:8px;">✕</button>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function updatePresetSelector() {
+    const selector = document.getElementById('preset-selector');
+    if (!selector) return;
+    selector.innerHTML = '';
+    for (const presetName in customBonusPresets) {
+        const opt = document.createElement('option');
+        opt.value = presetName;
+        opt.textContent = presetName;
+        if (presetName === activePreset) opt.selected = true;
+        selector.appendChild(opt);
     }
 }
 
@@ -816,6 +1403,7 @@ function calculateTotals() {
     return { spent, received, percent, count: winners.length };
 }
 
+// ==================== SAVE / LOAD STATE ====================
 function saveAppState() {
     const state = {
         participants: fetchParticipants(),
@@ -829,17 +1417,79 @@ function saveAppState() {
         buyNumber
     };
     localStorage.setItem('appState', JSON.stringify(state));
-    syncWinnersToFirebase();
+    // Не вызываем syncWinnersToFirebase() здесь — синк только при явных действиях
 }
 
 function loadAppState() {
     const state = JSON.parse(localStorage.getItem('appState'));
-    if (!state) {
+
+    if (state && state.winners && state.winners.length > 0) {
+        // Есть данные в localStorage — используем их
+        restoreFromState(state);
+        isInitialLoad = false;
         loadBuyNumber();
         loadArchives();
-        return;
-    }
+    } else {
+        // localStorage пустой — пробуем загрузить из Firebase
+        console.log('No local state, checking Firebase...');
+        db.ref('currentWinners').once('value').then(snapshot => {
+            const firebaseWinners = snapshot.val();
+            if (firebaseWinners && firebaseWinners.length > 0) {
+                // Firebase имеет данные — восстанавливаем
+                console.log('Found winners in Firebase:', firebaseWinners.length);
+                winners = [];
+                winnerId = 1;
+                firebaseWinners.forEach(w => {
+                    addWinnerRow({ name: w.name }, w.price || '', w.payout || '', true);
+                });
+                updateAllBonuses();
+                winnersSection.style.display = 'block';
+                inputSection.style.display = 'none';
+                controlsSection.style.display = 'none';
+                participantsSection.style.display = 'none';
 
+                // Восстанавливаем participants из localStorage если есть
+                if (state && state.participants) {
+                    state.participants.forEach(p => addParticipantRow(p.name, true));
+                    participants = state.participants;
+                }
+                if (state && state.mode) {
+                    bonusModeSelect.value = state.mode;
+                    document.getElementById('edit-bonus-rules').style.display = (state.mode === 'custom') ? 'inline-block' : 'none';
+                }
+                // Also try to load mode from Firebase
+                db.ref('bonusMode').once('value').then(snap => {
+                    const mode = snap.val();
+                    if (mode) {
+                        bonusModeSelect.value = mode;
+                        document.getElementById('edit-bonus-rules').style.display = (mode === 'custom') ? 'inline-block' : 'none';
+                        updateAllBonuses();
+                    }
+                });
+
+                // Привязываем event listeners к загруженным строкам
+                attachWinnerRowListeners();
+            } else {
+                // Ни localStorage, ни Firebase нет данных — чистый старт
+                console.log('No data anywhere, fresh start');
+                if (state) {
+                    // Есть state но без winners (participants etc)
+                    restoreFromState(state);
+                }
+            }
+            isInitialLoad = false;
+            loadBuyNumber();
+            loadArchives();
+        }).catch(error => {
+            console.error('Error loading from Firebase:', error);
+            isInitialLoad = false;
+            loadBuyNumber();
+            loadArchives();
+        });
+    }
+}
+
+function restoreFromState(state) {
     participantId = state.participantId || 1;
     winnerId = state.winnerId || 1;
 
@@ -847,6 +1497,8 @@ function loadAppState() {
     additionalLimitInput.value = state.additionalLimit || '5';
     if (state.mode) {
         bonusModeSelect.value = state.mode;
+        document.getElementById('edit-bonus-rules').style.display = (state.mode === 'custom') ? 'inline-block' : 'none';
+        updateAllBonuses();
     }
 
     state.participants.forEach(p => addParticipantRow(p.name, true));
@@ -862,6 +1514,13 @@ function loadAppState() {
         inputSection.style.display = 'none';
     }
 
+    attachWinnerRowListeners();
+    updateAllBonuses();
+    buyNumber = state.buyNumber || 1;
+    buyNumberSpan.textContent = buyNumber;
+}
+
+function attachWinnerRowListeners() {
     const winnerRows = winnersTableBody.rows;
     for (let i = 0; i < winnerRows.length; i++) {
         const row = winnerRows[i];
@@ -915,11 +1574,6 @@ function loadAppState() {
         }
         nameCell.dataset.originalName = nameCell.textContent.trim();
     }
-    updateAllBonuses();
-    buyNumber = state.buyNumber || 1;
-    buyNumberSpan.textContent = buyNumber;
-    loadBuyNumber();
-    loadArchives();
 }
 
 function loadBuyNumber() {
@@ -927,7 +1581,6 @@ function loadBuyNumber() {
         const archives = snapshot.val() || {};
         buyNumber = Object.keys(archives).length + 1;
         buyNumberSpan.textContent = buyNumber;
-        saveAppState();
     });
 }
 
