@@ -849,7 +849,7 @@ function deleteWinner(mainRow) {
 
 function resetWithArchive() {
     archiveWinners();
-    localStorage.clear();
+    localStorage.removeItem('appState');
     db.ref('currentWinners').remove()
         .then(() => console.log('Winners cleared from Firebase'))
         .catch(error => console.error('Firebase clear error:', error));
@@ -858,7 +858,7 @@ function resetWithArchive() {
 }
 
 function resetWithoutArchive() {
-    localStorage.clear();
+    localStorage.removeItem('appState');
     db.ref('currentWinners').remove()
         .then(() => console.log('Winners cleared from Firebase'))
         .catch(error => console.error('Firebase clear error:', error));
@@ -1304,10 +1304,10 @@ function calculateBonus(row, index) {
     let bonus = 'gg';
 
     if (mode === 'shuffle' || mode === 'custom') {
-        let rules;
-        if (mode === 'custom' && customBonusPresets[activePreset] && customBonusPresets[activePreset].length > 0) {
-            rules = customBonusPresets[activePreset];
-        } else {
+        let rules = [];
+        if (mode === 'custom') {
+            rules = customBonusPresets[activePreset] || [];
+        } else if (mode === 'shuffle') {
             rules = [
                 { minX: 1100, type: 'fixed', value: '60$' },
                 { minX: 600, type: 'fixed', value: '35$' },
