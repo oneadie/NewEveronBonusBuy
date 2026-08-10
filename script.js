@@ -668,17 +668,25 @@ function parseTelegramInput() {
     const lines = input.split('\n').map(line => line.trim()).filter(line => line);
     const parsedParticipants = [];
     let currentEntry = [];
+    let currentNick = '';
+
+    function pushCurrent() {
+        if (currentEntry.length > 0) {
+            const name = currentEntry.join(' ').trim();
+            if (name) {
+                parsedParticipants.push({ name, tgNick: currentNick });
+            }
+            currentEntry = [];
+        }
+    }
 
     lines.forEach((line) => {
-        // Проверка на НОВЫЙ формат: [15.03.2026 11:54] Имя: Сообщение
-        const newFormatMatch = line.match(/^\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]\s+[^:]+:\s*(.*)/);
+        // Проверка на НОВЫЙ формат: [15.03.2026 11:54] Имя [в ответ Кому-то]: [Сообщение]
+        const newFormatMatch = line.match(/^\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]\s+(.*?)(?:\s+в ответ\s+[^:]*)?:\s*(.*)$/);
         if (newFormatMatch) {
-            if (currentEntry.length > 0) {
-                const name = currentEntry.join(' ').trim();
-                if (name) parsedParticipants.push({ name });
-                currentEntry = [];
-            }
-            const textAfterColon = newFormatMatch[1].trim();
+            pushCurrent();
+            currentNick = newFormatMatch[1].trim();
+            const textAfterColon = newFormatMatch[2].trim();
             if (textAfterColon) {
                 currentEntry.push(textAfterColon);
             }
@@ -686,28 +694,26 @@ function parseTelegramInput() {
         }
 
         // Проверка на СТАРЫЙ формат: Имя, [28.08.2025 13:29]
-        const oldFormatMatch = line.match(/^[^,]+,\s*\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]/);
+        const oldFormatMatch = line.match(/^([^,]+),\s*\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]/);
         if (oldFormatMatch) {
-            if (currentEntry.length > 0) {
-                const name = currentEntry.join(' ').trim();
-                if (name) parsedParticipants.push({ name });
-                currentEntry = [];
-            }
+            pushCurrent();
+            currentNick = oldFormatMatch[1].trim();
+            return;
+        }
+
+        // Игнорируем цитаты из Telegram (строки, начинающиеся с >)
+        if (line.startsWith('>')) {
             return;
         }
 
         currentEntry.push(line);
     });
-
-    if (currentEntry.length > 0) {
-        const name = currentEntry.join(' ').trim();
-        if (name) parsedParticipants.push({ name });
-    }
+    pushCurrent();
 
     participants = [];
     participantsTableBody.innerHTML = '';
     participantId = 1;
-    parsedParticipants.forEach(({ name }) => addParticipantRow(name));
+    parsedParticipants.forEach(({ name, tgNick }) => addParticipantRow(name, tgNick));
     inputSection.style.display = 'none';
     controlsSection.style.display = 'block';
     participantsSection.style.display = 'block';
