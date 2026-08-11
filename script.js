@@ -794,12 +794,8 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
         <td></td>
         <td></td>
         <td>
-            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;">
-                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color:#a887ff; font-weight:bold;">
-                    <input type="radio" class="ars-toggle" style="width:18px; height:18px; cursor:pointer; margin:0;" ${person.isArs ? 'checked' : ''}>
-                    ARS
-                </label>
-                <input type="number" class="ars-input" placeholder="Сумма" style="display:${person.isArs ? 'block' : 'none'}; width:80px; padding:4px; background:#2a2a5a; color:#d1d1f5; border:1px solid #6242ff; border-radius:4px; text-align:center;" value="${person.arsPrice || ''}">
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; height:100%;">
+                <button class="ars-convert-btn small-btn" style="${isViewMode ? 'display:none' : ''} padding: 6px 10px; width: auto; font-size: 0.9em; background: ${(person.isPriceConverted && person.isPayoutConverted) ? '#ff4d4d' : '#6242ff'}; color: #fff; white-space: nowrap;">${(person.isPriceConverted && person.isPayoutConverted) ? '↩ Отменить' : 'ARS ➔ RUB'}</button>
             </div>
         </td>
     `;
@@ -809,6 +805,11 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
     const arsCell = row.cells[7];
 
     nameCell.dataset.originalName = person.name;
+
+    let isPriceConverted = person.isPriceConverted || person.isConverted || false;
+    let isPayoutConverted = person.isPayoutConverted || person.isConverted || false;
+    let originalPrice = person.originalPrice || '';
+    let originalPayout = person.originalPayout || '';
 
     if (!isViewMode) {
         [nameCell, priceCell, payoutCell].forEach(cell => {
@@ -836,13 +837,14 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
             if (rowIndex !== -1 && winners[rowIndex]) {
                 winners[rowIndex].price = price;
 
-                const arsToggle = arsCell.querySelector('.ars-toggle');
-                const arsInput = arsCell.querySelector('.ars-input');
-                if (arsToggle && arsToggle.checked && arsExchangeRate > 0) {
-                    const parsedPrice = parseFloat(price) || 0;
-                    const calculatedArs = Math.round(parsedPrice / arsExchangeRate);
-                    arsInput.value = calculatedArs;
-                    winners[rowIndex].arsPrice = calculatedArs;
+                if (isPriceConverted) {
+                    isPriceConverted = false;
+                    winners[rowIndex].isPriceConverted = false;
+                    const btn = arsCell.querySelector('.ars-convert-btn');
+                    if (btn) {
+                        btn.textContent = 'ARS ➔ RUB';
+                        btn.style.background = '#6242ff';
+                    }
                 }
 
                 calculateBonus(row, rowIndex);
@@ -857,6 +859,17 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
             const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
             if (rowIndex !== -1 && winners[rowIndex]) {
                 winners[rowIndex].payout = payout;
+
+                if (isPayoutConverted) {
+                    isPayoutConverted = false;
+                    winners[rowIndex].isPayoutConverted = false;
+                    const btn = arsCell.querySelector('.ars-convert-btn');
+                    if (btn) {
+                        btn.textContent = 'ARS ➔ RUB';
+                        btn.style.background = '#6242ff';
+                    }
+                }
+
                 calculateBonus(row, rowIndex);
                 updateTotals();
                 syncWinnersToFirebase();
@@ -868,45 +881,94 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
             deleteWinner(row);
         });
 
-        const arsToggle = arsCell.querySelector('.ars-toggle');
-        const arsInput = arsCell.querySelector('.ars-input');
-
-        let isChecked = arsToggle.checked;
-        arsToggle.addEventListener('click', (e) => {
-            if (isChecked) {
-                arsToggle.checked = false;
-                isChecked = false;
-            } else {
-                isChecked = true;
-            }
-            arsInput.style.display = arsToggle.checked ? 'block' : 'none';
-            const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
-            if (rowIndex !== -1 && winners[rowIndex]) {
-                winners[rowIndex].isArs = arsToggle.checked;
-                syncWinnersToFirebase();
-                saveAppState();
-            }
-        });
-
-        arsInput.addEventListener('input', () => {
-            if (arsToggle.checked && arsExchangeRate > 0) {
-                const arsValue = parseFloat(arsInput.value) || 0;
-                const rubValue = Math.round(arsValue * arsExchangeRate);
-                priceCell.textContent = rubValue;
+        const arsConvertBtn = arsCell.querySelector('.ars-convert-btn');
+        if (arsConvertBtn) {
+            arsConvertBtn.addEventListener('click', () => {
+                if (arsExchangeRate <= 0) return;
+                
                 const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
-                if (rowIndex !== -1 && winners[rowIndex]) {
-                    winners[rowIndex].arsPrice = arsValue;
-                    winners[rowIndex].price = rubValue;
+                if (rowIndex === -1 || !winners[rowIndex]) return;
+
+                if (isPriceConverted && isPayoutConverted) {
+                    // UNDO
+                    priceCell.textContent = originalPrice;
+                    payoutCell.textContent = originalPayout;
+                    
+                    winners[rowIndex].price = originalPrice;
+                    winners[rowIndex].payout = originalPayout;
+
+                    isPriceConverted = false;
+                    isPayoutConverted = false;
+                    winners[rowIndex].isPriceConverted = false;
+                    winners[rowIndex].isPayoutConverted = false;
+
+                    arsConvertBtn.textContent = 'ARS ➔ RUB';
+                    arsConvertBtn.style.background = '#6242ff';
+
                     calculateBonus(row, rowIndex);
                     updateTotals();
                     syncWinnersToFirebase();
                     saveAppState();
+                    return;
                 }
-            }
-        });
+
+                // CONVERT
+                let priceText = priceCell.textContent.trim();
+                let payoutText = payoutCell.textContent.trim();
+                let price = parseFloat(priceText);
+                let payout = parseFloat(payoutText);
+                let updated = false;
+
+                if (!isPriceConverted && priceText !== '' && !isNaN(price)) {
+                    originalPrice = priceText;
+                    price = Math.round(price * arsExchangeRate);
+                    priceCell.textContent = price;
+                    winners[rowIndex].price = price;
+                    winners[rowIndex].originalPrice = originalPrice;
+                    
+                    isPriceConverted = true;
+                    winners[rowIndex].isPriceConverted = true;
+                    updated = true;
+                }
+                
+                if (!isPayoutConverted && payoutText !== '' && !isNaN(payout)) {
+                    originalPayout = payoutText;
+                    payout = Math.round(payout * arsExchangeRate);
+                    payoutCell.textContent = payout;
+                    winners[rowIndex].payout = payout;
+                    winners[rowIndex].originalPayout = originalPayout;
+                    
+                    isPayoutConverted = true;
+                    winners[rowIndex].isPayoutConverted = true;
+                    updated = true;
+                }
+
+                if (updated) {
+                    calculateBonus(row, rowIndex);
+                    updateTotals();
+                    syncWinnersToFirebase();
+                    saveAppState();
+                    
+                    if (isPriceConverted && isPayoutConverted) {
+                        arsConvertBtn.textContent = '↩ Отменить';
+                        arsConvertBtn.style.background = '#ff4d4d';
+                    } else {
+                        const originalText = 'ARS ➔ RUB';
+                        arsConvertBtn.textContent = '✓ Готово';
+                        arsConvertBtn.style.background = '#00cc88';
+                        setTimeout(() => {
+                            if (!isPriceConverted || !isPayoutConverted) {
+                                arsConvertBtn.textContent = originalText;
+                                arsConvertBtn.style.background = '#6242ff';
+                            }
+                        }, 1500);
+                    }
+                }
+            });
+        }
     }
 
-    winners.push({ name: person.name, price, payout, isArs: person.isArs || false, arsPrice: person.arsPrice || '' });
+    winners.push({ name: person.name, price, payout, isPriceConverted, isPayoutConverted, originalPrice, originalPayout });
 
     calculateBonus(row, winners.length - 1);
     updateTotals();
