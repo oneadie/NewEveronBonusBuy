@@ -14,6 +14,8 @@ const db = firebase.database();
 const auth = firebase.auth();
 
 // ==================== LOGIN ====================
+let arsExchangeRate = 0;
+
 const loginOverlay = document.getElementById('login-overlay');
 const appContainer = document.getElementById('app-container');
 const loginBtn = document.getElementById('login-btn');
@@ -250,6 +252,21 @@ function initApp() {
         updateAllBonuses();
         saveAppState();
     });
+
+    // Fetch ARS exchange rate periodically
+    function updateArsRate() {
+        fetch('https://open.er-api.com/v6/latest/ARS')
+            .then(res => res.json())
+            .then(data => {
+                if(data && data.rates && data.rates.RUB) {
+                    arsExchangeRate = data.rates.RUB;
+                    console.log('ARS to RUB rate loaded:', arsExchangeRate);
+                }
+            })
+            .catch(err => console.error('Error fetching ARS rate:', err));
+    }
+    updateArsRate();
+    setInterval(updateArsRate, 60000); // Update every 1 minute
     
     editBonusRulesBtn.addEventListener('click', () => {
         updatePresetSelector();
@@ -298,10 +315,16 @@ function initApp() {
         if (customBonusPresets[activePreset]) {
             customBonusPresets[activePreset] = [];
             document.querySelectorAll('.bonus-rule-row').forEach(row => {
+                const operator = row.querySelector('.rule-operator').value;
                 const minX = parseInt(row.querySelector('.rule-minx').value) || 0;
                 const type = row.querySelector('.rule-type').value;
-                const value = row.querySelector('.rule-prize').value.trim() || '0';
-                if (minX > 0) customBonusPresets[activePreset].push({ minX, type, value });
+                let value = row.querySelector('.rule-prize').value.trim() || '0';
+                
+                // strip out $ or % just in case the user typed it
+                value = value.replace('$', '').replace('%', '').trim();
+                if (minX > 0 || operator === '=' || operator === '<' || operator === '<=') {
+                    customBonusPresets[activePreset].push({ operator, minX, type, value });
+                }
             });
         }
         localStorage.setItem('customBonusPresets', JSON.stringify(customBonusPresets));
@@ -770,10 +793,20 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
         <td contenteditable="${isViewMode ? 'false' : 'true'}">${payout}</td>
         <td></td>
         <td></td>
+        <td>
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;">
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color:#a887ff; font-weight:bold;">
+                    <input type="radio" class="ars-toggle" style="width:18px; height:18px; cursor:pointer; margin:0;" ${person.isArs ? 'checked' : ''}>
+                    ARS
+                </label>
+                <input type="number" class="ars-input" placeholder="Сумма" style="display:${person.isArs ? 'block' : 'none'}; width:80px; padding:4px; background:#2a2a5a; color:#d1d1f5; border:1px solid #6242ff; border-radius:4px; text-align:center;" value="${person.arsPrice || ''}">
+            </div>
+        </td>
     `;
     const nameCell = row.cells[2];
     const priceCell = row.cells[3];
     const payoutCell = row.cells[4];
+    const arsCell = row.cells[7];
 
     nameCell.dataset.originalName = person.name;
 
@@ -802,6 +835,16 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
             const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
             if (rowIndex !== -1 && winners[rowIndex]) {
                 winners[rowIndex].price = price;
+
+                const arsToggle = arsCell.querySelector('.ars-toggle');
+                const arsInput = arsCell.querySelector('.ars-input');
+                if (arsToggle && arsToggle.checked && arsExchangeRate > 0) {
+                    const parsedPrice = parseFloat(price) || 0;
+                    const calculatedArs = Math.round(parsedPrice / arsExchangeRate);
+                    arsInput.value = calculatedArs;
+                    winners[rowIndex].arsPrice = calculatedArs;
+                }
+
                 calculateBonus(row, rowIndex);
                 updateTotals();
                 syncWinnersToFirebase();
@@ -824,9 +867,46 @@ function addWinnerRow(person, price = '', payout = '', isLoading = false) {
         row.querySelector('.remove-btn').addEventListener('click', () => {
             deleteWinner(row);
         });
+
+        const arsToggle = arsCell.querySelector('.ars-toggle');
+        const arsInput = arsCell.querySelector('.ars-input');
+
+        let isChecked = arsToggle.checked;
+        arsToggle.addEventListener('click', (e) => {
+            if (isChecked) {
+                arsToggle.checked = false;
+                isChecked = false;
+            } else {
+                isChecked = true;
+            }
+            arsInput.style.display = arsToggle.checked ? 'block' : 'none';
+            const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
+            if (rowIndex !== -1 && winners[rowIndex]) {
+                winners[rowIndex].isArs = arsToggle.checked;
+                syncWinnersToFirebase();
+                saveAppState();
+            }
+        });
+
+        arsInput.addEventListener('input', () => {
+            if (arsToggle.checked && arsExchangeRate > 0) {
+                const arsValue = parseFloat(arsInput.value) || 0;
+                const rubValue = Math.round(arsValue * arsExchangeRate);
+                priceCell.textContent = rubValue;
+                const rowIndex = Array.from(winnersTableBody.rows).indexOf(row);
+                if (rowIndex !== -1 && winners[rowIndex]) {
+                    winners[rowIndex].arsPrice = arsValue;
+                    winners[rowIndex].price = rubValue;
+                    calculateBonus(row, rowIndex);
+                    updateTotals();
+                    syncWinnersToFirebase();
+                    saveAppState();
+                }
+            }
+        });
     }
 
-    winners.push({ name: person.name, price, payout });
+    winners.push({ name: person.name, price, payout, isArs: person.isArs || false, arsPrice: person.arsPrice || '' });
 
     calculateBonus(row, winners.length - 1);
     updateTotals();
@@ -1316,14 +1396,33 @@ function calculateBonus(row, index) {
                 { minX: 100, type: 'fixed', value: '3$' }
             ];
         }
+
+        if (rules.length === 0) {
+            row.cells[6].innerText = '0$';
+            row.className = 'consolation-row';
+            return;
+        }
+
         const sorted = [...rules].sort((a, b) => b.minX - a.minX);
         for (const rule of sorted) {
-            if (x >= rule.minX) {
+            const operator = rule.operator || '>=';
+            let conditionMet = false;
+            
+            if (operator === '>') conditionMet = x > rule.minX;
+            else if (operator === '>=') conditionMet = x >= rule.minX;
+            else if (operator === '=') conditionMet = x === rule.minX;
+            else if (operator === '<') conditionMet = x < rule.minX;
+            else if (operator === '<=') conditionMet = x <= rule.minX;
+
+            if (conditionMet) {
                 if (rule.type === 'percent') {
                     const amount = Math.round((parseFloat(rule.value) / 100) * payout);
-                    bonus = amount > 0 ? amount + '$' : 'gg';
+                    bonus = `${amount}$`;
                 } else {
                     bonus = rule.value;
+                    if (!bonus.endsWith('$') && bonus !== 'gg') {
+                        bonus += '$';
+                    }
                 }
                 break;
             }
@@ -1353,19 +1452,40 @@ function renderBonusRulesEditor() {
     rules.forEach((rule, i) => {
         const div = document.createElement('div');
         div.className = 'bonus-rule-row';
-        div.style.cssText = 'display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;';
+        div.style.display = 'flex';
+        div.style.gap = '10px';
+        div.style.marginBottom = '10px';
+        div.style.alignItems = 'center';
         const isFixed = rule.type !== 'percent';
+        const operator = rule.operator || '>=';
+        
         div.innerHTML = `
-            <span>Если >=</span>
+            <span>Если x</span>
+            <select class="rule-operator" style="padding:8px;border:2px solid #6242ff;border-radius:8px;background:#2a2a5a;color:#d1d1f5;font-size:1.1em;font-weight:bold;">
+                <option value=">" ${operator === '>' ? 'selected' : ''}>></option>
+                <option value=">=" ${operator === '>=' ? 'selected' : ''}>>=</option>
+                <option value="=" ${operator === '=' ? 'selected' : ''}>=</option>
+                <option value="<" ${operator === '<' ? 'selected' : ''}><</option>
+                <option value="<=" ${operator === '<=' ? 'selected' : ''}><=</option>
+            </select>
             <input type="number" class="rule-minx" value="${rule.minX}" style="width:90px;padding:8px;border:2px solid #6242ff;border-radius:8px;background:#2a2a5a;color:#d1d1f5;font-size:1.1em;font-weight:bold;">
-            <span>x →</span>
             <select class="rule-type" style="padding:8px;border:2px solid #6242ff;border-radius:8px;background:#2a2a5a;color:#d1d1f5;font-size:1em;">
-                <option value="fixed" ${isFixed ? 'selected' : ''}>$ Фикс</option>
+                <option value="fixed" ${isFixed ? 'selected' : ''}>Фикс. сумма</option>
                 <option value="percent" ${!isFixed ? 'selected' : ''}>% от выигрыша</option>
             </select>
-            <input type="text" class="rule-prize" value="${rule.value}" style="width:100px;padding:8px;border:2px solid #6242ff;border-radius:8px;background:#2a2a5a;color:#d1d1f5;font-size:1.1em;font-weight:bold;" placeholder="${isFixed ? '50$' : '10'}">
-            <button class="remove-btn" onclick="this.parentElement.remove()" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:8px;">✕</button>
+            <div style="position:relative; display:inline-block;">
+                <input type="text" class="rule-prize" value="${rule.value.replace('$','').replace('%','')}" style="width:100px;padding:8px;padding-right:25px;border:2px solid #6242ff;border-radius:8px;background:#2a2a5a;color:#d1d1f5;font-size:1.1em;font-weight:bold; text-align:right;" placeholder="0">
+                <span class="rule-symbol" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); color:#a887ff; font-weight:bold; pointer-events:none;">${isFixed ? '$' : '%'}</span>
+            </div>
+            <button class="remove-btn" onclick="this.parentElement.remove()" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#ff4d4d;color:white;font-weight:bold;border:none;cursor:pointer;">✕</button>
         `;
+        
+        const typeSelect = div.querySelector('.rule-type');
+        const symbolSpan = div.querySelector('.rule-symbol');
+        typeSelect.addEventListener('change', (e) => {
+            symbolSpan.textContent = e.target.value === 'percent' ? '%' : '$';
+        });
+
         container.appendChild(div);
     });
 }
@@ -1510,8 +1630,16 @@ function restoreFromState(state) {
     state.participants.forEach(p => addParticipantRow(p.name, true));
     participants = state.participants || [];
 
-    winners = state.winners || [];
-    winnersTableBody.innerHTML = state.winnersHtml || '';
+    winnersTableBody.innerHTML = '';
+    
+    // Reconstruct rows instead of using raw HTML so layout updates apply instantly
+    if (state.winners && state.winners.length > 0) {
+        winners = []; // clear first so addWinnerRow can push
+        winnerId = 1;
+        state.winners.forEach(w => {
+            addWinnerRow(w, w.price || '', w.payout || '', true);
+        });
+    }
 
     if (winners.length > 0) {
         winnersSection.style.display = 'block';
@@ -1520,7 +1648,7 @@ function restoreFromState(state) {
         inputSection.style.display = 'none';
     }
 
-    attachWinnerRowListeners();
+    // attachWinnerRowListeners(); // Not needed since addWinnerRow already attached them
     updateAllBonuses();
     buyNumber = state.buyNumber || 1;
     buyNumberSpan.textContent = buyNumber;
