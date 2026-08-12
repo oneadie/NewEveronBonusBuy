@@ -275,19 +275,36 @@ function initApp() {
     });
     closeBonusRules.addEventListener('click', () => { bonusRulesModal.style.display = 'none'; });
     
+    function saveEditorStateToPreset() {
+        if (!customBonusPresets[activePreset]) return;
+        customBonusPresets[activePreset] = [];
+        document.querySelectorAll('.bonus-rule-row').forEach(row => {
+            const operator = row.querySelector('.rule-operator').value;
+            const minX = parseInt(row.querySelector('.rule-minx').value) || 0;
+            const type = row.querySelector('.rule-type').value;
+            let value = row.querySelector('.rule-prize').value.trim() || '0';
+            value = value.replace('$', '').replace('%', '').trim();
+            if (minX > 0 || operator === '=' || operator === '<' || operator === '<=') {
+                customBonusPresets[activePreset].push({ operator, minX, type, value });
+            }
+        });
+    }
+
     presetSelector.addEventListener('change', (e) => {
+        saveEditorStateToPreset();
         activePreset = e.target.value;
         renderBonusRulesEditor();
     });
     
     addPresetBtn.addEventListener('click', () => {
+        saveEditorStateToPreset();
         let presetNum = Object.keys(customBonusPresets).length + 1;
         let newName = 'Правило ' + presetNum;
         while (customBonusPresets[newName]) {
             presetNum++;
             newName = 'Правило ' + presetNum;
         }
-        customBonusPresets[newName] = [ { minX: 100, type: 'fixed', value: '5$' } ];
+        customBonusPresets[newName] = [ { operator: '>=', minX: 100, type: 'fixed', value: '5' } ];
         activePreset = newName;
         updatePresetSelector();
         renderBonusRulesEditor();
@@ -306,27 +323,13 @@ function initApp() {
     
     document.getElementById('add-bonus-rule').addEventListener('click', () => {
         if (!customBonusPresets[activePreset]) return;
-        customBonusPresets[activePreset].push({ minX: 100, type: 'fixed', value: '5$' });
+        saveEditorStateToPreset();
+        customBonusPresets[activePreset].push({ operator: '>=', minX: 100, type: 'fixed', value: '5' });
         renderBonusRulesEditor();
     });
     
     document.getElementById('save-bonus-rules').addEventListener('click', () => {
-        // Read rules from editor
-        if (customBonusPresets[activePreset]) {
-            customBonusPresets[activePreset] = [];
-            document.querySelectorAll('.bonus-rule-row').forEach(row => {
-                const operator = row.querySelector('.rule-operator').value;
-                const minX = parseInt(row.querySelector('.rule-minx').value) || 0;
-                const type = row.querySelector('.rule-type').value;
-                let value = row.querySelector('.rule-prize').value.trim() || '0';
-                
-                // strip out $ or % just in case the user typed it
-                value = value.replace('$', '').replace('%', '').trim();
-                if (minX > 0 || operator === '=' || operator === '<' || operator === '<=') {
-                    customBonusPresets[activePreset].push({ operator, minX, type, value });
-                }
-            });
-        }
+        saveEditorStateToPreset();
         localStorage.setItem('customBonusPresets', JSON.stringify(customBonusPresets));
         localStorage.setItem('activePreset', activePreset);
         bonusRulesModal.style.display = 'none';
@@ -1602,7 +1605,8 @@ function saveAppState() {
         additionalLimit: additionalLimitInput.value,
         winnersHtml: winnersTableBody.innerHTML,
         mode: bonusModeSelect.value,
-        buyNumber
+        buyNumber,
+        isArsVisible: document.getElementById('toggle-ars-column')?.checked || false
     };
     localStorage.setItem('appState', JSON.stringify(state));
     // Не вызываем syncWinnersToFirebase() здесь — синк только при явных действиях
@@ -1683,6 +1687,16 @@ function restoreFromState(state) {
 
     limitInput.value = state.limit || '10';
     additionalLimitInput.value = state.additionalLimit || '5';
+
+    const arsToggle = document.getElementById('toggle-ars-column');
+    if (arsToggle) {
+        arsToggle.checked = state.isArsVisible || false;
+        if (arsToggle.checked) {
+            document.getElementById('winners-table').classList.add('ars-visible');
+        } else {
+            document.getElementById('winners-table').classList.remove('ars-visible');
+        }
+    }
     if (state.mode) {
         bonusModeSelect.value = state.mode;
         document.getElementById('edit-bonus-rules').style.display = (state.mode === 'custom') ? 'inline-block' : 'none';
@@ -1872,3 +1886,19 @@ function startBuy() {
 function stopBuy() {
     syncStatus('stopped');
 }
+
+// ARS Toggle Logic
+document.addEventListener('DOMContentLoaded', () => {
+    const arsToggle = document.getElementById('toggle-ars-column');
+    const winnersTable = document.getElementById('winners-table');
+    if (arsToggle && winnersTable) {
+        arsToggle.addEventListener('change', () => {
+            if (arsToggle.checked) {
+                winnersTable.classList.add('ars-visible');
+            } else {
+                winnersTable.classList.remove('ars-visible');
+            }
+            saveAppState();
+        });
+    }
+});

@@ -1643,3 +1643,14 @@ td[contenteditable="true"]:hover {
         display: none;
     }
 }
+
+/* ARS Column Toggle */
+#winners-table th:nth-child(8),
+#winners-table td:nth-child(8) {
+    display: none;
+}
+
+#winners-table.ars-visible th:nth-child(8),
+#winners-table.ars-visible td:nth-child(8) {
+    display: table-cell;
+}
