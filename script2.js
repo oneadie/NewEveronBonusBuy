@@ -115,7 +115,7 @@ async function startChat() {
 function connectWebSocket() {
     cleanupConnection();
 
-    const appKey = '32cbd69e4b950bf97679';
+    const appKey = '34bf7a0ff419a2a775b9';
     const wsUrl = `wss://ws-us2.pusher.com/app/${appKey}?protocol=7&client=js&version=8.4.0-rc2&flash=false`;
     ws = new WebSocket(wsUrl);
 
